@@ -955,9 +955,9 @@ void TGADrawCurve(TGA *tga, float *from, float *ctrlFrom,
   // The length of the curve is upper bounded by the perimeter of
   // the box, then to calculate the step of the curve parameter
   // we can divide the range of the parameter (1.0) by the perimeter,
-  // and we minus epsilon to avoid jump over pixels due to float
-  // approximation in the case of horizontal and vertical lines
-  float dt = 1.0 / l - TGA_EPSILON;
+  // and we multiply by 1 - epsilon to avoid jump over pixels due 
+  // to float approximation in the case of horizontal and vertical lines
+  float dt = 1.0 / l * (1.0 - TGA_EPSILON);
   // Declare the parameter of the curve
   float t = 0.0;
   // Declare a variable to memorize the position on the curve
