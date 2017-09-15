@@ -342,7 +342,7 @@ int TGASave(TGA *tga, char *fileName) {
   TGAHeader *h = tga->_header;
   putc(h->_idLength, fptr);
   putc(h->_colorMapType, fptr);
-  putc(h->_dataTypeCode, fptr);
+  putc(2, fptr); // _dataTypeCode
   fwrite(&(h->_colorMapOrigin), 2, 1, fptr);
   fwrite(&(h->_colorMapLength), 2, 1, fptr);
   putc(h->_colorMapDepth, fptr);
@@ -350,7 +350,7 @@ int TGASave(TGA *tga, char *fileName) {
   fwrite(&(h->_yOrigin), 2, 1, fptr);
   fwrite(&(h->_width), 2, 1, fptr);
   fwrite(&(h->_height), 2, 1, fptr);
-  putc(h->_bitsPerPixel, fptr);
+  putc(32, fptr); // _bitsPerPixel
   putc(h->_imageDescriptor, fptr);
   // For each pixel
   for (int i = 0; 
