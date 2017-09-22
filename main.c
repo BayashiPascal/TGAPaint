@@ -97,7 +97,7 @@ int main(void) {
     fprintf(stderr, "Can't create the font\n");
     return 1;
   }
-  from[0] = 5.0; from[1] = 200.0;
+  from[0] = 5.0; from[1] = 212.0;
   TGAFontSetSize(font, 12.0);
   float v[2] = {0.5, 1.0};
   TGAFontSetScale(font, v);
@@ -105,13 +105,13 @@ int main(void) {
   TGAFontSetSpace(font, v);
   TGAPrintString(theTGA, pen, font, 
     (unsigned char *)"ABCDEFGHIJ\nKLMNOPQRST\nUVWXYZ", from);
-  from[0] = 5.0; from[1] = 155.0;
+  from[0] = 5.0; from[1] = 167.0;
   TGAPrintString(theTGA, pen, font, 
     (unsigned char *)"0123456789", from);
-  from[0] = 5.0; from[1] = 250.0;
+  from[0] = 5.0; from[1] = 262.0;
   TGAPrintString(theTGA, pen, font, 
     (unsigned char *)"abcdefghij\nklmnopqrst\nuvwxyz^@", from);
-  from[0] = 5.0; from[1] = 140.0;
+  from[0] = 5.0; from[1] = 152.0;
   TGAPrintString(theTGA, pen, font, 
     (unsigned char *)"!\"#$%&'()=\n~`{}*+<>?,\n./\\[]-|_;:", from);
   // Save the TGA
