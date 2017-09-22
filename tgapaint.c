@@ -841,11 +841,48 @@ void TGAPrintString(TGA *tga, TGAPencil *pen, TGAFont *font,
     return;
   // Get the number of character in the string
   int nbChar = strlen((char*)s);
+  // Get the dimension in pixel of the string
+  float dim[2];
+  TGAFontGetStringSize(font, s, dim);
+  // Declare a variable to memorize the starting position corrected
+  // with the anchoring
+  float anchoredPos[2];
+  if (font->_anchor == tgaFontAnchorBottomLeft) {
+    anchoredPos[0] = pos[0];
+    anchoredPos[1] = pos[1] - font->_scale[1] * font->_size + dim[1];
+  } else if (font->_anchor == tgaFontAnchorBottomCenter) {
+    anchoredPos[0] = pos[0] - dim[0] * 0.5;
+    anchoredPos[1] = pos[1] - font->_scale[1] * font->_size + dim[1];
+  } else if (font->_anchor == tgaFontAnchorBottomRight) {
+    anchoredPos[0] = pos[0] - dim[0];
+    anchoredPos[1] = pos[1] - font->_scale[1] * font->_size + dim[1];
+  } else if (font->_anchor == tgaFontAnchorCenterLeft) {
+    anchoredPos[0] = pos[0];
+    anchoredPos[1] = pos[1] - font->_scale[1] * font->_size + 
+      dim[1] * 0.5;
+  } else if (font->_anchor == tgaFontAnchorCenterCenter) {
+    anchoredPos[0] = pos[0] - dim[0] * 0.5;
+    anchoredPos[1] = pos[1] - font->_scale[1] * font->_size + 
+      dim[1] * 0.5;
+  } else if (font->_anchor == tgaFontAnchorCenterRight) {
+    anchoredPos[0] = pos[0] - dim[0];
+    anchoredPos[1] = pos[1] - font->_scale[1] * font->_size + 
+      dim[1] * 0.5;
+  } else if (font->_anchor == tgaFontAnchorTopLeft) {
+    anchoredPos[0] = pos[0];
+    anchoredPos[1] = pos[1] - font->_scale[1] * font->_size;
+  } else if (font->_anchor == tgaFontAnchorTopCenter) {
+    anchoredPos[0] = pos[0] - dim[0] * 0.5;
+    anchoredPos[1] = pos[1] - font->_scale[1] * font->_size;
+  } else if (font->_anchor == tgaFontAnchorTopRight) {
+    anchoredPos[0] = pos[0] - dim[0];
+    anchoredPos[1] = pos[1] - font->_scale[1] * font->_size;
+  }
   // Declare a variable to memorise the position where to print 
   // the next character
   float curPos[2];
   // Set the position to the start position
-  curPos[0] = pos[0]; curPos[1] = pos[1]; 
+  curPos[0] = anchoredPos[0]; curPos[1] = anchoredPos[1]; 
   // for each character in the string
   for (int iChar = 0; iChar < nbChar; ++iChar) {
     // If the character is a space
@@ -855,14 +892,13 @@ void TGAPrintString(TGA *tga, TGAPencil *pen, TGAFont *font,
       curPos[0] += (font->_size * font->_scale[0] + font->_space[0]);
     // Else, if the character is a tab
     } else if (s[iChar] == '\t') {
-      // Increment the position in abciss to the next multiple 
+      // Set the position in abciss to the next multiple 
       // of the tab parameter
-      curPos[0] = 
-        (floor(curPos[0] / font->_tabSize) + 1.0) * font->_tabSize;
+      curPos[0] = TGAFontGetNextPosByTab(font, curPos[0]);
     // Else, if the char is a line return
     } else if (s[iChar] == '\n') {
       // Put the position in abciss back to the start position
-      curPos[0] = pos[0];
+      curPos[0] = anchoredPos[0];
       // Increment the position along ordinate by one character 
       // plus interspace
       curPos[1] -= (font->_size * font->_scale[1] + font->_space[1]);
