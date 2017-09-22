@@ -2,13 +2,18 @@
 
 // ================ Functions declaration ====================
 
+// Create the curves of each characters for the default font
 void TGAFontCreateDefault(TGAFont *font);
+
+// Get the next position form 'p' incremented by one tabulation
+// of 'font'
+float TGAFontGetNextPosByTab(TGAFont *font, float p);
 
 // ================ Functions implementation ==================
 
 // Create a TGAFont with set of character 'font', 
 // _fontSize = 18.0, _space[0] = _space[1] = 3.0, 
-// _scale[0] = 0.5, _scale[1] = 1.0
+// _scale[0] = 0.5, _scale[1] = 1.0, _anchor = tgaFrontAnchorTopLeft
 // Return NULL if it couldn't create
 TGAFont* TGAFontCreate(tgaFont font) {
   // Allocate memory
@@ -21,6 +26,8 @@ TGAFont* TGAFontCreate(tgaFont font) {
     ret->_space[0] = ret->_space[1] = 3.0;
     // Set the default scale
     ret->_scale[0] = 0.5; ret->_scale[1] = 1.0;
+    // Set the default anchor
+    ret->_anchor = tgaFontAnchorTopLeft;
     // For each character
     for (int iChar = 256; iChar--;)
       // By default set this character definition as empty (no curves)
@@ -73,6 +80,84 @@ void TGAFontSetSpace(TGAFont *font, float *v) {
   // Set the space
   font->_space[0] = v[0];  
   font->_space[1] = v[1];  
+}
+
+// Set the anchor of TGAFont 'font' to 'v'
+// Do nothing if arguments are invalid
+void TGAFontSetAnchor(TGAFont *font, tgaFontAnchor v) {
+  // If the argument are invalid, stop here
+  if (font == NULL)
+    return;
+  // Set the anchor
+  font->_anchor = v;  
+}
+
+// Get the next position form 'p' incremented by one tabulation
+// of 'font'
+float TGAFontGetNextPosByTab(TGAFont *font, float p) {
+  return (floor(p / font->_tabSize) + 1.0) * font->_tabSize;
+}
+
+// Get the dimension in pixels of the block of text representing 
+// string 's' printed with 'font'
+// Return the dimension in float[2] 'dim', return {-1, -1} if arguments
+// are invalid
+void TGAFontGetStringSize(TGAFont *font, unsigned char *s, float *dim) {
+  // Check arguments
+  if (font == NULL || dim == NULL) {
+    dim[0] = dim[1] = -1.0;
+    return;
+  }
+  // If the string is empty
+  if (s == NULL) {
+    // Dimensions are null
+    dim[0] = dim[1] = 0.0;
+  // Else, the string is not empty
+  } else {
+    // Initialise the dimension;
+    dim[0] = 0.0;
+    dim[1] = font->_size * font->_scale[1];
+    // Declare a variable to memorize the length of the current line
+    float l = 0.0;
+    // Declare a variable to memorize if we are at the beginning 
+    // of the line
+    bool flagStart = true;
+    // For each character
+    int nb = strlen((char*)s);
+    for (int iChar = 0; iChar < nb; ++iChar) {
+      // If this character is a line return
+      if (s[iChar] == '\n') {
+        // Increment height
+        dim[1] += font->_size * font->_scale[1] + font->_space[1];
+        // Reset the length of line
+        l = 0.0;
+        // Reset the flag 
+        flagStart = true;
+      // Else, if this character is a tabulation
+      } else if (s[iChar] == '\t') {
+        // Increment length to the next tab
+        l = TGAFontGetNextPosByTab(font, l);
+        // If the current line is longer than the longest one
+        if (dim[0] < l)
+          // Update the length of the
+          dim[0] = l;
+      // Else, for others character
+      } else {
+        // If it's not the first char
+        if (flagStart == false)
+          // Add the space between character
+          l += font->_space[0];
+        // Update the flag of beginning of line
+        flagStart = false;
+        // Increment the length of the current line
+        l += font->_size * font->_scale[0];
+        // If the current line is longer than the longest one
+        if (dim[0] < l)
+          // Update the length
+          dim[0] = l;
+      }
+    }
+  }
 }
 
 // Create the curves of each characters for the default font
