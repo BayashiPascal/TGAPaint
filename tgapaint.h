@@ -118,6 +118,14 @@ typedef enum tgaFont {
   tgaFontDefault
 } tgaFont;
 
+// Enumeration of available anchor position for fonts
+typedef enum tgaFontAnchor {
+  tgaFontAnchorTopLeft, tgaFontAnchorTopCenter, tgaFontAnchorTopRight, 
+  tgaFontAnchorCenterLeft, tgaFontAnchorCenterCenter,
+  tgaFontAnchorCenterRight, tgaFontAnchorBottomLeft,
+  tgaFontAnchorBottomCenter, tgaFontAnchorBottomRight 
+} tgaFontAnchor;
+
 // Font to write on the TGA
 typedef struct TGAFont {
   // Size in pixel of one character
@@ -133,6 +141,9 @@ typedef struct TGAFont {
   // Tabulation size, in pixel, when '\t' is printed move x to 
   // (floor(p/_tabSize)+1)*_tabSize, where p is current x position
   float _tabSize;
+  // Anchor (position in the printed text corresponding to 'pos'
+  // in TGAPrintString)
+  tgaFontAnchor _anchor;
 } TGAFont;
 
 // ================ Functions declaration ====================
@@ -320,7 +331,7 @@ void TGAPencilSetModeColorBlend(TGAPencil *pen, int fromCol, int toCol);
 
 // Create a TGAFont with set of character 'font', 
 // _fontSize = 18.0, _space[0] = _space[1] = 3.0, 
-// _scale[0] = 0.5, _scale[1] = 1.0
+// _scale[0] = 0.5, _scale[1] = 1.0, _anchor = tgaFrontAnchorTopLeft
 // Return NULL if it couldn't create
 TGAFont* TGAFontCreate(tgaFont font);
 
@@ -339,5 +350,15 @@ void TGAFontSetScale(TGAFont *font, float *v);
 // Set the font spacing of TGAFont 'font' to 'v'
 // Do nothing if arguments are invalid
 void TGAFontSetSpace(TGAFont *font, float *v);
+
+// Set the anchor of TGAFont 'font' to 'v'
+// Do nothing if arguments are invalid
+void TGAFontSetAnchor(TGAFont *font, tgaFontAnchor v);
+
+// Get the dimension in pixels of the block of text representing 
+// string 's' printed with 'font'
+// Return the dimension in float[2] 'dim', return {-1, -1} if arguments
+// are invalid
+void TGAFontGetStringSize(TGAFont *font, unsigned char *s, float *dim);
 
 #endif
