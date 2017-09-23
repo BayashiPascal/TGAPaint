@@ -394,6 +394,11 @@ void TGAFontSetAnchor(TGAFont *font, tgaFontAnchor v);
 // are invalid
 void TGAFontGetStringSize(TGAFont *font, unsigned char *s, float *dim);
 
+// Get the average color of the whole image
+// Return a TGAPixel set to the avergae color, or NULL if the arguments
+// are invalid
+TGAPixel *TGAGetAverageColor(TGA *tga);
+
 #endif
 \end{lstlisting}
 \end{ttfamily}
@@ -1793,6 +1798,38 @@ void TGACurvePos(float *from, float *to, float *ctrlFrom,
   pos[0] = (1.0 - t) * D[0] + t * E[0];
   pos[1] = (1.0 - t) * D[1] + t * E[1];
 }
+
+// Get the average color of the whole image
+// Return a TGAPixel set to the avergae color, or NULL if the arguments
+// are invalid
+TGAPixel *TGAGetAverageColor(TGA *tga) {
+  // Check arguments
+  if (tga == NULL)
+    return NULL;
+  // Declare the returned TGAPixel
+  TGAPixel *pixel = TGAGetWhitePixel();
+  // Declare a variable to calculate the average value
+  float rgba[4] = {0.0};
+  // Calculate the average color
+  int pos[2];
+  for (pos[0] = 0; pos[0] < tga->_header->_width; ++(pos[0])) {
+    for (pos[1] = 0; pos[1] < tga->_header->_height; ++(pos[1])) {
+      for (int iRGB = 0; iRGB < 4; ++iRGB)
+        rgba[iRGB] += 
+          (float)(tga->_pixels[pos[1] * tga->_header->_width + 
+          pos[0]]._rgba[iRGB]);
+    }
+  }
+  for (int iRGB = 0; iRGB < 4; ++iRGB)
+    rgba[iRGB] /= 
+      (float)(tga->_header->_width) * (float)(tga->_header->_height);
+  // Set the result pixel value
+  for (int iRGB = 0; iRGB < 4; ++iRGB)
+    pixel->_rgba[iRGB] = (char)floor(rgba[iRGB]);
+  // Return the result pixel
+  return pixel;
+}
+
 \end{lstlisting}
 \end{ttfamily}
 \end{scriptsize}
