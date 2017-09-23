@@ -361,4 +361,9 @@ void TGAFontSetAnchor(TGAFont *font, tgaFontAnchor v);
 // are invalid
 void TGAFontGetStringSize(TGAFont *font, unsigned char *s, float *dim);
 
+// Get the average color of the whole image
+// Return a TGAPixel set to the avergae color, or NULL if the arguments
+// are invalid
+TGAPixel *TGAGetAverageColor(TGA *tga);
+
 #endif
