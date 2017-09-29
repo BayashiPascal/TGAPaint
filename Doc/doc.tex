@@ -14,7 +14,7 @@
 
 \begin{document}
 
-\title{BCurve}
+\title{TGAPaint}
 \author{P. Baillehache}
 \date{\today}
 \maketitle
@@ -23,21 +23,33 @@
 
 \section*{Introduction}
 
-BCurve is C library to manipulate Bezier curves of any dimension and order.\\ 
+TGAPaint library is a C library to create and manipulate pictures in TGA format.\\
+
+It offers functions to create, open and save TGA files, restricted to types 2 (uncompressed true-color image) and 10 (run-length encoded true-color image), pixel depths of 16, 24, and 32, and color map 0 (no color map) and 1 (standard TGA color map).The user can access the header and pixels values, paint simple geometric shapes (point, line, curve, rectangle, filled rectangle, ellipse and filled ellipse) and print text (ascii characters) with a virtual pencil (round/square shape, solid/blend color, antialias), and apply gaussian blur to the picture.\\ 
 
 \section{Interface}
 
 \begin{scriptsize}
 \begin{ttfamily}
-\verbatiminput{../bcurve.h}
+\verbatiminput{../tgapaint.h}
 \end{ttfamily}
 \end{scriptsize}
 
 \section{Code}
 
+\subsection{tgapaint.c}
+
 \begin{scriptsize}
 \begin{ttfamily}
-\verbatiminput{../bcurve.c}
+\verbatiminput{../tgapaint.c}
+\end{ttfamily}
+\end{scriptsize}
+
+\subsection{tgafont.c}
+
+\begin{scriptsize}
+\begin{ttfamily}
+\verbatiminput{../tgafont.c}
 \end{ttfamily}
 \end{scriptsize}
 
@@ -60,28 +72,29 @@ BCurve is C library to manipulate Bezier curves of any dimension and order.\\
 Output:\\
 \begin{scriptsize}
 \begin{ttfamily}
-\verbatiminput{../output.txt}
+\begin{lstlisting}
+ID length:         0
+Colourmap type:    0
+Image type:        2
+Colour map offset: 0
+Colour map length: 0
+Colour map depth:  0
+X origin:          0
+Y origin:          0
+Width:             120
+Height:            270
+Bits per pixel:    32
+Descriptor:        0
+\end{lstlisting}
 \end{ttfamily}
 \end{scriptsize}
 
-\begin{center}
-\begin{figure}[H]
-\centering\includegraphics[width=6cm]{./res.png}\\
-\end{figure}
-\end{center}
-\begin{center}
-\begin{figure}[H]
-\centering\includegraphics[width=6cm]{./resrot.png}\\
-\end{figure}
-\end{center}
 
-curve.txt:\\
-\begin{scriptsize}
-\begin{ttfamily}
-\verbatiminput{../curve.txt}
-\end{ttfamily}
-\end{scriptsize}
-
+Resulting image (enlarge):\\
+\begin{center}
+\includegraphics[width=5cm]{tga.png}
+\end{center} 
+	
 \end{document}
 
 
