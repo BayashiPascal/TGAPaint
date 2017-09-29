@@ -1,135 +1,140 @@
-#include <stdio.h>
 #include <stdlib.h>
-#include "tgapaint.h"
+#include <stdio.h>
+#include <time.h>
+#include <string.h>
+#include "bcurve.h"
 
-int main(void) {
-  int ret;
-  TGA *theTGA;
-  // Create the TGA
-  short dim[2] = {120, 270};
-  TGAPixel *pix = TGAGetWhitePixel();
-  theTGA = TGACreate(dim, pix);
-  if (theTGA == NULL) {
-    fprintf(stderr, "Error while creating the tga\n");
+int main(int argc, char **argv) {
+  // Create a BCurve
+  int order = 3;
+  int dim = 2;
+  BCurve *curve = BCurveCreate(order, dim);
+  // If we couldn't create the BCurve
+  if (curve == NULL) {
+    // Print a message
+    fprintf(stderr, "BCurveCreate failed\n");
+    // Stop here
     return 1;
   }
-  // Set the color of some pixels
-  short pos[2];
-  pos[0] = 60; pos[1] = 50;
-  TGASetPix(theTGA, pos, pix);
-  pix->_rgba[0] = 255; pix->_rgba[1] = 0; pix->_rgba[2] = 0;
-  pos[0] = 90; pos[1] = 50;
-  TGASetPix(theTGA, pos, pix);
-  pix->_rgba[0] = 0; pix->_rgba[1] = 0; pix->_rgba[2] = 255;
-  pos[0] = 60; pos[1] = 25;
-  TGASetPix(theTGA, pos, pix);
-  pix->_rgba[0] = 0; pix->_rgba[1] = 255; pix->_rgba[2] = 0;
-  pos[0] = 30; pos[1] = 75;
-  TGASetPix(theTGA, pos, pix);
-  // Draw some lines
-  TGAPencil *pen = TGAGetBlackPencil();
-  pix->_rgba[0] = 0; pix->_rgba[1] = 0; pix->_rgba[2] = 0;
-  TGAPencilSetColor(pen, pix);
-  float from[2];
-  float to[2];
-  from[0] = 50.5; from[1] = 40.5; to[0] = 50.5; to[1] = 60.5;
-  TGADrawLine(theTGA, from, to, pen);
-  from[0] = 50.5; from[1] = 60.5; to[0] = 70.5; to[1] = 60.5;
-  TGADrawLine(theTGA, from, to, pen);
-  pix->_rgba[0] = 255; pix->_rgba[1] = 0; pix->_rgba[2] = 255;
-  from[0] = -10.5; from[1] = 50.5; to[0] = 60.5; to[1] = -10.5;
-  TGADrawLine(theTGA, from, to, pen);
-  from[0] = 60.5; from[1] = -10.5; to[0] = 130.5; to[1] = 50.5;
-  TGADrawLine(theTGA, from, to, pen);
-  from[0] = 130.5; from[1] = 50.5; to[0] = 60.5; to[1] = 110.5;
-  TGADrawLine(theTGA, from, to, pen);
-  from[0] = 60.5; from[1] = 110.5; to[0] = -10.5; to[1] = 50.5;
-  TGADrawLine(theTGA, from, to, pen);
-  // Apply gaussian blur
-  TGAFilterGaussBlur(theTGA, 0.5, 2.0);
-  // Draw a rectangle
-  pix->_rgba[0] = 0; pix->_rgba[1] = 255; pix->_rgba[2] = 255;
-  TGAPencilSetColor(pen, pix);
-  from[0] = 70.5; from[1] = 40.5; to[0] = 100.5; to[1] = 10.5;
-  TGADrawRect(theTGA, from, to, pen);
-  // Draw a filled rectangle
-  pix->_rgba[0] = 255; pix->_rgba[1] = 255; pix->_rgba[2] = 0;
-  TGAPencilSetColor(pen, pix);
-  from[0] = 75.5; from[1] = 35.5; to[0] = 95.5; to[1] = 15.5;
-  TGAFillRect(theTGA, from, to, pen);
-  // Draw an ellipse
-  pix->_rgba[0] = 128; pix->_rgba[1] = 128; pix->_rgba[2] = 128;
-  TGAPencilSetColor(pen, pix);
-  float center[2] = {30.5, 50.5};
-  float radius[2] = {15.5, 20.5};
-  TGADrawEllipse(theTGA, center, radius, pen);
-  // Draw a filled ellipse
-  pix->_rgba[0] = 200; pix->_rgba[1] = 200; pix->_rgba[2] = 200;
-  TGAPencilSetColor(pen, pix);
-  center[0] = 60.5; center[1] = 75.5;
-  radius[0] = 25.5; radius[1] = 10.5;
-  TGAFillEllipse(theTGA, center, radius, pen);
-  // Draw a line using blend colors
-  from[0] = 30.5; from[1] = 25.5; to[0] = 90.5; to[1] = 75.5;
-  pix->_rgba[0] = pix->_rgba[3] = 255;
-  pix->_rgba[1] = pix->_rgba[2] = 0;
-  TGAPencilSetColor(pen, pix);
-  pix->_rgba[2] = pix->_rgba[3] = 255;
-  pix->_rgba[1] = pix->_rgba[0] = 0;
-  TGAPencilSelectColor(pen, 1);
-  TGAPencilSetColor(pen, pix);
-  TGAPencilSetModeColorBlend(pen, 0, 1);
-  TGADrawLine(theTGA, from, to, pen);
-  // Draw a curve
-  float ctrlFrom[2] = {40.5, 0.5};
-  float ctrlTo[2] = {80.5, 50.5};
-  TGAPencilSetShapeRound(pen);
-  TGAPencilSetAntialias(pen, true);
-  TGAPencilSetModeColorSolid(pen);
-  TGAPencilSetThickness(pen, 5.0);
-  TGADrawCurve(theTGA, from, ctrlFrom, ctrlTo, to, pen);
-  // Print some strings
-  TGAPencilSetThickness(pen, 1.0);
-  pix->_rgba[0] = pix->_rgba[1] = pix->_rgba[2] = 0;
-  TGAPencilSetColor(pen, pix);
-  TGAFont *font = TGAFontCreate(tgaFontDefault);
-  if (font == NULL) {
-    fprintf(stderr, "Can't create the font\n");
-    return 1;
+  // Print the BCurve
+  BCurvePrint(curve, stdout);
+  fprintf(stdout, "\n");
+  // Create a VecFloat to set the values
+  VecFloat *v = VecFloatCreate(dim);
+  // If we couldn't create the VecFloat
+  if (v == NULL) {
+    // Release memory
+    BCurveFree(&curve);
+    // Stop here
+    return 2;
   }
-  from[0] = 5.0; from[1] = 212.0;
-  TGAFontSetSize(font, 12.0);
-  float v[2] = {0.5, 1.0};
-  TGAFontSetScale(font, v);
-  v[0] = 5.0; v[1] = 3.0;
-  TGAFontSetSpace(font, v);
-  TGAPrintString(theTGA, pen, font, 
-    (unsigned char *)"ABCDEFGHIJ\nKLMNOPQRST\nUVWXYZ", from);
-  from[0] = 5.0; from[1] = 167.0;
-  TGAPrintString(theTGA, pen, font, 
-    (unsigned char *)"0123456789", from);
-  from[0] = 5.0; from[1] = 262.0;
-  TGAPrintString(theTGA, pen, font, 
-    (unsigned char *)"abcdefghij\nklmnopqrst\nuvwxyz^@", from);
-  from[0] = 5.0; from[1] = 152.0;
-  TGAPrintString(theTGA, pen, font, 
-    (unsigned char *)"!\"#$%&'()=\n~`{}*+<>?,\n./\\[]-|_;:", from);
-  // Save the TGA
-  TGASave(theTGA, "./out.tga");
-  //Free the tga
-  TGAFree(&theTGA);
-  // Load the TGA 
-  ret = TGALoad(&theTGA, "./out.tga");
+  // Set the control points
+  float ctrlPts[8] = {0.0, 1.0, 2.0, 5.0, 4.0, 3.0, 6.0, 7.0};
+  for (int iCtrl = 0; iCtrl < order + 1; ++iCtrl) {
+    VecSet(v, 0, ctrlPts[2 * iCtrl]);
+    VecSet(v, 1, ctrlPts[2 * iCtrl + 1]);
+    BCurveSet(curve, iCtrl, v);
+  }
+  // Print the BCurve
+  BCurvePrint(curve, stdout);
+  fprintf(stdout, "\n");
+  // Save the curve
+  FILE *file = fopen("./curve.txt", "w");
+  // If we couldn't open the file
+  if (file == NULL) {
+    // Print a message
+    fprintf(stderr, "Can't open file\n");
+    // Free memory
+    VecFree(&v);
+    BCurveFree(&curve);
+    // Stop here
+    return 3;
+  }
+  int ret = BCurveSave(curve, file);
+  // If we couldn't save
   if (ret != 0) {
-    fprintf(stderr, "Error while opening the file : %d\n", ret);
-    return 1;
+    // Print a message
+    fprintf(stderr, "BCurveSave failed (%d)\n", ret);
+    // Free memory
+    VecFree(&v);
+    BCurveFree(&curve);
+    // Stop here
+    return 4;
   }
-  // Print its header on standard output stream
-  TGAPrintHeader(theTGA, stdout);
-  // Free the memory
-  TGAFreeFont(&font);
-  TGAFree(&theTGA);
-  TGAFreePixel(&pix);
-  TGAFreePencil(&pen);
+  fclose(file);
+  // Load the curve
+  file = fopen("./curve.txt", "r");
+  // If we couldn't open the file
+  if (file == NULL) {
+    // Print a message
+    fprintf(stderr, "Can't open file\n");
+    // Free memory
+    VecFree(&v);
+    BCurveFree(&curve);
+    // Stop here
+    return 5;
+  }
+  BCurve *loaded = NULL;
+  ret = BCurveLoad(&loaded, file);
+  // If we couldn't load
+  if (ret != 0) {
+    // Print a message
+    fprintf(stderr, "BCurveLoad failed (%d)\n", ret);
+    // Free memory
+    VecFree(&v);
+    BCurveFree(&curve);
+    BCurveFree(&loaded);
+    // Stop here
+    return 6;
+  }
+  fclose(file);
+  // Print the loaded curve
+  BCurvePrint(loaded, stdout);
+  fprintf(stdout, "\n");
+  // Get some values of the curve
+  for (float u = 0.0; u <= 1.01; u += 0.1) {
+    VecFloat *w = BCurveGet(curve, u);
+    // If we couldn't get the values
+    if (w == NULL) {
+      // Free memory
+      VecFree(&v);
+      BCurveFree(&curve);
+      BCurveFree(&loaded);
+      // Stop here 
+      return 7;
+    }
+    fprintf(stdout, "%.1f: ", u);
+    VecPrint(w, stdout);
+    fprintf(stdout, "\n");
+    VecFree(&w);
+  }
+  // Rotate the curve
+  BCurveRot2D(curve, PBMATH_PI * 0.5);
+  // Get some values of the curve
+  fprintf(stdout, "after rotation:\n");
+  for (float u = 0.0; u <= 1.01; u += 0.1) {
+    VecFloat *w = BCurveGet(curve, u);
+    // If we couldn't get the values
+    if (w == NULL) {
+      // Free memory
+      VecFree(&v);
+      BCurveFree(&curve);
+      BCurveFree(&loaded);
+      // Stop here 
+      return 7;
+    }
+    fprintf(stdout, "%.1f: ", u);
+    VecPrint(w, stdout);
+    fprintf(stdout, "\n");
+    VecFree(&w);
+  }  
+  // Print the curve approximate length
+  fprintf(stdout, "approx length: %.3f\n", BCurveApproxLen(curve));
+  // Free memory
+  VecFree(&v);
+  BCurveFree(&curve);
+  BCurveFree(&loaded);
+  // Return success code
   return 0;
 }
+
