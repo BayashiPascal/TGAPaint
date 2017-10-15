@@ -10,6 +10,7 @@
 #include <math.h>
 #include <string.h>
 #include <stdbool.h>
+#include "bcurve.h"
 
 // ================= Define ==================
 
@@ -52,6 +53,8 @@ typedef struct TGAHeader {
 typedef struct TGAPixel {
   // RGB and transparency values
   unsigned char _rgba[4];
+  // Flag to memorize if this pixel is in read only mode
+  bool _readOnly;
 } TGAPixel;
 
 // Main TGA structure
@@ -109,7 +112,7 @@ typedef struct TGAChar {
   // (1st anchor(x,y), 1st ctrl point(x,y), 
   // 2nd ctrl point(x,y), 2nd anchor(x,y))
   // in pixels
-  float _curve[TGA_NBMAXCURVECHAR * 8];
+  BCurve *_curves[TGA_NBMAXCURVECHAR];
 } TGAChar;
 
 // Enumeration of available fonts
@@ -135,15 +138,17 @@ typedef struct TGAFont {
   // Space between character, (x,y), in pixel
   // _space[0] is added to x after each character in a string
   // _space[1] is added to y when '\n' is printed
-  float _space[2];
+  VecFloat *_space;
   // Scale of the characters, (x,y), multiplied to _size
-  float _scale[2];
+  VecFloat *_scale;
   // Tabulation size, in pixel, when '\t' is printed move x to 
   // (floor(p/_tabSize)+1)*_tabSize, where p is current x position
   float _tabSize;
   // Anchor (position in the printed text corresponding to 'pos'
   // in TGAPrintString)
   tgaFontAnchor _anchor;
+  // Direction to the right of the font
+  VecFloat *_right;
 } TGAFont;
 
 // ================ Functions declaration ====================
@@ -153,7 +158,7 @@ typedef struct TGAFont {
 // (0,0) is the bottom left corner, x toward right, y toward top
 // Return NULL in case of invalid arguments or memory allocation
 // failure
-TGA* TGACreate(short *dim, TGAPixel *pixel);
+TGA* TGACreate(VecShort *dim, TGAPixel *pixel);
 
 // Clone a TGA
 // Return NULL in case of failure
@@ -186,62 +191,71 @@ void TGAPrintHeader(TGA *tga, FILE *stream);
 
 // Get a pointer to the pixel at coord (x,y) = (pos[0],pos[1])
 // Return NULL in case of invalid arguments
-TGAPixel* TGAGetPix(TGA *tga, short *pos);
+TGAPixel* TGAGetPix(TGA *tga, VecShort *pos);
 
 // Set the color of one pixel at coord (x,y) = (pos[0],pos[1]) to 'pix'
 // Do nothing in case of invalid arguments
-void TGASetPix(TGA *tga, short *pos, TGAPixel *pix);
+void TGASetPix(TGA *tga, VecShort *pos, TGAPixel *pix);
 
 // Draw one stroke at 'pos' with 'pen'
 // Don't do anything in case of invalid arguments
-void TGAStrokePix(TGA *tga, float *pos, TGAPencil *pen);
+void TGAStrokePix(TGA *tga, VecFloat *pos, TGAPencil *pen);
 
 // Draw a line between 'from' and 'to' with pencil 'pen'
 // pixels outside the TGA are ignored
 // do nothing if arguments are invalid
-void TGADrawLine(TGA *tga, float *from, float *to, TGAPencil *pen);
+void TGADrawLine(TGA *tga, VecFloat *from, VecFloat *to, TGAPencil *pen);
   
-// Draw a curve between 'from' and 'to' with pencil 'pen'
-// and control points 'ctrlFrom' and 'ctrlTo'
-// pixels outside the TGA are ignored
+// Draw the BCurve 'curve' (must be of dimension 2 and order > 0)
 // do nothing if arguments are invalid
-void TGADrawCurve(TGA *tga, float *from, float *ctrlFrom, 
-  float *ctrlTo, float *to, TGAPencil *pen);
+void TGADrawCurve(TGA *tga, BCurve *curve, TGAPencil *pen);
   
 // Draw a rectangle between 'from' and 'to' with pencil 'pen'
 // pixels outside the TGA are ignored
 // do nothing if arguments are invalid
-void TGADrawRect(TGA *tga, float *from, float *to, TGAPencil *pen);
+void TGADrawRect(TGA *tga, VecFloat *from, VecFloat *to, TGAPencil *pen);
 
 // Fill a rectangle between 'from' and 'to' with pencil 'pen'
 // pixels outside the TGA are ignored
 // do nothing if arguments are invalid
-void TGAFillRect(TGA *tga, float *from, float *to, TGAPencil *pen);
+void TGAFillRect(TGA *tga, VecFloat *from, VecFloat *to, TGAPencil *pen);
 
 // Draw a ellipse at 'center' of radius 'r' (Rx,Ry) 
 // with pencil 'pen' 
 // pixels outside the TGA are ignored
 // do nothing if arguments are invalid
-void TGADrawEllipse(TGA *tga, float *center, float *r, TGAPencil *pen);
+void TGADrawEllipse(TGA *tga, VecFloat *center, VecFloat *r, TGAPencil *pen);
 
 // Fill an ellipse at 'center' of radius 'r' (Rx, Ry) with pencil 'pen'
 // pixels outside the TGA are ignored
 // do nothing if arguments are invalid
-void TGAFillEllipse(TGA *tga, float *center, float *r, TGAPencil *pen);
+void TGAFillEllipse(TGA *tga, VecFloat *center, VecFloat *r, TGAPencil *pen);
+
+// Draw the shapoid 's' with pencil 'pen' 
+// The shapoid must be of dimension 2
+// Pixels outside the TGA are ignored
+// Do nothing if arguments are invalid
+void TGADrawShapoid(TGA *tga, Shapoid *s, TGAPencil *pen);
+
+// Fill the shapoid 's' with pencil 'pen' 
+// The shapoid must be of dimension 2
+// Pixels outside the TGA are ignored
+// Do nothing if arguments are invalid
+void TGAFillShapoid(TGA *tga, Shapoid *s, TGAPencil *pen);
 
 // Apply a gaussian blur of 'strength' and 'range' perimeter on the TGA
 // Do nothing if arguments are invalid 
 void TGAFilterGaussBlur(TGA *tga, float strength, float range);
 
-// Print the string 's' with its (bottom, left) position at 'pos'
-// and (width, height) dimension 'dim' with font 'font'
+// Print the string 's' with its anchor position at 'pos', TGAPencil 
+// 'pen' and font 'font'
 void TGAPrintString(TGA *tga, TGAPencil *pen, TGAFont *font, 
-  unsigned char *s, float *pos);
+  unsigned char *s, VecFloat *pos);
 
 // Print the char 'c' with its (bottom, left) position at 'pos'
 // and (width, height) dimension 'dim' with font 'font'
 void TGAPrintChar(TGA *tga, TGAPencil *pen, TGAFont *font, 
-  unsigned char c, float *pos);
+  unsigned char c, VecFloat *pos);
   
 // Get a white TGAPixel
 TGAPixel* TGAGetWhitePixel(void);
@@ -284,7 +298,7 @@ void TGAPencilSelectColor(TGAPencil *pen, int iCol);
 // Return -1 if arguments are invalid
 int TGAPencilGetColor(TGAPencil *pen);
 
-// Get the active color of the TGAPencil 'pen'
+// Get a TGAPixel equal to the active color of the TGAPencil 'pen'
 // Return NULL if arguments are invalid
 TGAPixel* TGAPencilGetPixel(TGAPencil *pen);
 
@@ -332,6 +346,7 @@ void TGAPencilSetModeColorBlend(TGAPencil *pen, int fromCol, int toCol);
 // Create a TGAFont with set of character 'font', 
 // _fontSize = 18.0, _space[0] = _space[1] = 3.0, 
 // _scale[0] = 0.5, _scale[1] = 1.0, _anchor = tgaFrontAnchorTopLeft
+// _dir = <1.0, 0.0>, _tabSize = _fontSize
 // Return NULL if it couldn't create
 TGAFont* TGAFontCreate(tgaFont font);
 
@@ -343,27 +358,50 @@ void TGAFreeFont(TGAFont **font);
 // Do nothing if arguments are invalid
 void TGAFontSetSize(TGAFont *font, float v);
 
+// Set the font tab size of TGAFont 'font' to 'v'
+// Do nothing if arguments are invalid
+void TGAFontSetTabSize(TGAFont *font, float v);
+
 // Set the font scale of TGAFont 'font' to 'v'
 // Do nothing if arguments are invalid
-void TGAFontSetScale(TGAFont *font, float *v);
+void TGAFontSetScale(TGAFont *font, VecFloat *v);
 
 // Set the font spacing of TGAFont 'font' to 'v'
 // Do nothing if arguments are invalid
-void TGAFontSetSpace(TGAFont *font, float *v);
+void TGAFontSetSpace(TGAFont *font, VecFloat *v);
 
 // Set the anchor of TGAFont 'font' to 'v'
 // Do nothing if arguments are invalid
 void TGAFontSetAnchor(TGAFont *font, tgaFontAnchor v);
 
-// Get the dimension in pixels of the block of text representing 
-// string 's' printed with 'font'
-// Return the dimension in float[2] 'dim', return {-1, -1} if arguments
-// are invalid
-void TGAFontGetStringSize(TGAFont *font, unsigned char *s, float *dim);
+// Set the right direction of TGAFont 'font' to 'v'
+// Do nothing if arguments are invalid
+void TGAFontSetRight(TGAFont *font, VecFloat *v);
+
+// Get the bounding box as a facoid of order 2 and dim 2 in pixels
+// of the block of text representing string 's' printed with 'font'
+// Return NULL if arguments are invalid
+Shapoid* TGAFontGetStringBound(TGAFont *font, unsigned char *s);
+
+// Get the angle of the right vector of the font with the abciss
+// Return 0.0 if the arguments are invalid or memory allocation failed
+float TGAFontGetAngleWithAbciss(TGAFont *font);
 
 // Get the average color of the whole image
 // Return a TGAPixel set to the avergae color, or NULL if the arguments
 // are invalid
 TGAPixel *TGAGetAverageColor(TGA *tga);
+
+// Set the read only flag of a TGAPixel
+// Do nothing if arguments are invalid
+void TGAPixelSetReadOnly(TGAPixel *pix, bool v);
+
+// Set the read only flag of all the TGAPixel of a TGA
+// Do nothing if arguments are invalid
+void TGAPixelSetAllReadOnly(TGA *tga, bool v);
+
+// Get the read only flag of a TGAPixel
+// Return true if arguments are invalid
+bool TGAPixelIsReadOnly(TGAPixel *pix);
 
 #endif

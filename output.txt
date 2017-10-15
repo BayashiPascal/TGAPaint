@@ -1,0 +1,12 @@
+ID length:         0
+Colourmap type:    0
+Image type:        2
+Colour map offset: 0
+Colour map length: 0
+Colour map depth:  0
+X origin:          0
+Y origin:          0
+Width:             120
+Height:            270
+Bits per pixel:    32
+Descriptor:        0
