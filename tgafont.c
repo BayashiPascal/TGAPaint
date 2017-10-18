@@ -272,6 +272,8 @@ Shapoid* TGAFontGetStringBound(TGAFont *font, unsigned char *s) {
   // The rotation must also be applied to the position which may be
   // not at the origin
   VecRot2D(res->_pos, theta);
+  // Free memory
+  VecFloatFree(&dim);
   // Return the result
   return res;
 }

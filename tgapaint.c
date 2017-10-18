@@ -1049,6 +1049,7 @@ void TGAPrintString(TGA *tga, TGAPencil *pen, TGAFont *font,
   VecFree(&right);
   VecFree(&down);
   VecFree(&rightspace);
+  VecFree(&rightnorm);
   VecFree(&downspace);
   ShapoidFree(&boundbox);
 }
@@ -1084,6 +1085,7 @@ void TGAPrintChar(TGA *tga, TGAPencil *pen, TGAFont *font,
     TGADrawCurve(tga, curve, pen);
     // Free memory
     BCurveFree(&curve);
+    VecFree(&scale);
   }
 }
   
