@@ -228,39 +228,38 @@ Shapoid* TGAFontGetStringBound(TGAFont *font, unsigned char *s) {
   // Scale the Facoid
   ShapoidScale(res, dim);
   // Reposition the Facoid according to the anchor
-  VecSet(res->_pos, 1, -height);
   switch (font->_anchor) {
     case tgaFontAnchorTopLeft:
+      VecSet(res->_pos, 1, VecGet(res->_pos, 1) - VecGet(dim, 1));
       break;
     case tgaFontAnchorTopCenter:
+      VecSet(res->_pos, 1, VecGet(res->_pos, 1) - VecGet(dim, 1));
       VecSet(res->_pos, 0, -0.5 * VecGet(dim, 0));
       break;
     case tgaFontAnchorTopRight:
+      VecSet(res->_pos, 1, VecGet(res->_pos, 1) - VecGet(dim, 1));
       VecSet(res->_pos, 0, -1.0 * VecGet(dim, 0));
       break;
     case tgaFontAnchorCenterLeft:
       VecSet(res->_pos, 1, 
-        VecGet(res->_pos, 1) + 0.5 * VecGet(dim, 1));
+        VecGet(res->_pos, 1) - 0.5 * VecGet(dim, 1));
       break;
     case tgaFontAnchorCenterCenter:
       VecSet(res->_pos, 1, 
-        VecGet(res->_pos, 1) + 0.5 * VecGet(dim, 1));
+        VecGet(res->_pos, 1) - 0.5 * VecGet(dim, 1));
       VecSet(res->_pos, 0, -0.5 * VecGet(dim, 0));
       break;
     case tgaFontAnchorCenterRight:
       VecSet(res->_pos, 1, 
-        VecGet(res->_pos, 1) + 0.5 * VecGet(dim, 1));
+        VecGet(res->_pos, 1) - 0.5 * VecGet(dim, 1));
       VecSet(res->_pos, 0, -1.0 * VecGet(dim, 0));
       break;
     case tgaFontAnchorBottomLeft:
-      VecSet(res->_pos, 1, VecGet(res->_pos, 1) + VecGet(dim, 1));
       break;
     case tgaFontAnchorBottomCenter:
-      VecSet(res->_pos, 1, VecGet(res->_pos, 1) + VecGet(dim, 1));
       VecSet(res->_pos, 0, -0.5 * VecGet(dim, 0));
       break;
     case tgaFontAnchorBottomRight:
-      VecSet(res->_pos, 1, VecGet(res->_pos, 1) + VecGet(dim, 1));
       VecSet(res->_pos, 0, -1.0 * VecGet(dim, 0));
       break;
     default:

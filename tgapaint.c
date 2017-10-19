@@ -987,7 +987,7 @@ void TGAPrintString(TGA *tga, TGAPencil *pen, TGAFont *font,
   // If we couldn't allocate memory
   if (cursor == NULL)
     return;
-  // Set the start position of the cursors
+  // Set the start position of the cursor in the bounding box
   // It's the upper left corner of the bounding box minus the height
   // of one character
   VecCopy(cursor, boundbox->_pos);

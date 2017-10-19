@@ -133,6 +133,7 @@ int main(void) {
     fprintf(stderr, "Can't create the font\n");
     return 6;
   }
+  TGAFontSetAnchor(font, tgaFontAnchorTopLeft);
   VecSet(from, 0, 5.0); VecSet(from, 1, 212.0);
   TGAFontSetSize(font, 12.0);
   VecFloat *v = VecFloatCreate(2); 
