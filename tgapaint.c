@@ -596,6 +596,9 @@ void TGADrawCurve(TGA *tga, BCurve *curve, TGAPencil *pen) {
     return;
   for (int dim = 2; dim--;)
     VecSet(prevPos, dim, (short)floor(VecGet(curve->_ctrl[0], dim))); 
+  // Set the blend value of the pencil to calculate the pencil 
+  // current color
+  TGAPencilSetBlend(pen, 0.0);
   // Stroke the first pixel
   TGAStrokePix(tga, curve->_ctrl[0], pen);  
   // While we haven't reached the end of the curve
