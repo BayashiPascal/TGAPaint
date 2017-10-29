@@ -75,10 +75,8 @@ typedef enum tgaPencilModeColor {
 
 // Enumeration of TGAPencil's shapes
 typedef enum tgaPencilShape {
-  // Square shape
-  tgaPenSquare, 
-  // Round shape
-  tgaPenRound,
+  // Shapoid
+  tgaPenShapoid,
   // Pixel mode
   tgaPenPixel
 } tgaPencilShape;
@@ -93,6 +91,8 @@ typedef struct TGAPencil {
   tgaPencilModeColor _modeColor;
   // Current shape
   tgaPencilShape _shape;
+  // Shapoid of the tip of the pen
+  Shapoid *_tip;
   // The 2 colors used when color mode is tgaPenBlend (index in _colors)
   int _blendColor[2];
   // Parameter cotnroling the blend when color mode is tgaPenBlend
@@ -189,6 +189,10 @@ int TGASave(TGA *tga, char *fileName);
 // If arguments are invalid, do nothing
 void TGAPrintHeader(TGA *tga, FILE *stream);
 
+// Return true if 'pos' is inside 'tga'
+// Return false else, or if arguments are invalid
+bool TGAIsPosInside(TGA *tga, VecShort *pos);
+
 // Get a pointer to the pixel at coord (x,y) = (pos[0],pos[1])
 // Return NULL in case of invalid arguments
 TGAPixel* TGAGetPix(TGA *tga, VecShort *pos);
@@ -275,7 +279,7 @@ void TGAFreePixel(TGAPixel **pixel);
 TGAPixel* TGABlendPixel(TGAPixel *pixA, TGAPixel *pixB, float blend);
 
 // Create a default TGAPencil with all color set to transparent
-// solid mode, thickness = 1.0, square shape, no antialias
+// solid mode, thickness = 1.0, tip as facoid, no antialias
 // Return NULL if it couldn't allocate memory
 TGAPencil* TGAGetPencil(void);
 
@@ -302,6 +306,8 @@ int TGAPencilGetColor(TGAPencil *pen);
 // Return NULL if arguments are invalid
 TGAPixel* TGAPencilGetPixel(TGAPencil *pen);
 
+// Get the 
+
 // Set the active color of TGAPencil 'pen' to TGAPixel 'col'
 // Do nothing if arguments are invalid
 void TGAPencilSetColor(TGAPencil *pen, TGAPixel *col);
@@ -311,6 +317,7 @@ void TGAPencilSetColor(TGAPencil *pen, TGAPixel *col);
 void TGAPencilSetColRGBA(TGAPencil *pen, unsigned char *rgba);
 
 // Set the thickness of TGAPencil 'pen' to 'v'
+// Equivalent to a scale of the shapoid of the tip
 // Do nothing if arguments are invalid
 void TGAPencilSetThickness(TGAPencil *pen, float v);
 
@@ -322,13 +329,23 @@ void TGAPencilSetAntialias(TGAPencil *pen, bool v);
 // Do nothing if arguments are invalid
 void TGAPencilSetBlend(TGAPencil *pen, float v);
 
-// Set the shape of the TGAPencil 'pen' to 'tgaPenSquare'
+// Set the shape of the TGAPencil 'pen' to 'tgaPenShapoid' and 
+// set the tip of the pen to a new facoid centered on the origin
+// and scaled to the pen thickness
 // Do nothing if arguments are invalid
 void TGAPencilSetShapeSquare(TGAPencil *pen);
 
-// Set the shape of the TGAPencil 'pen' to 'tgaPenRound'
+// Set the shape of the TGAPencil 'pen' to 'tgaPenShapoid' and
+// set the tip of the pen to a new ellipsoid scaled to the pen thickness
 // Do nothing if arguments are invalid
 void TGAPencilSetShapeRound(TGAPencil *pen);
+
+// Set the shape of the TGAPencil 'pen' to 'tgaPenShapoid' and
+// set the tip of the pen to a clone of the Shapoid 'shape'
+// 'shape' is considered to be centered and given at a thickness 
+// of 1.0 before rescaling to 'pen' thickness
+// Do nothing if arguments are invalid
+void TGAPencilSetShapeShapoid(TGAPencil *pen, Shapoid *shape);
 
 // Set the shape of the TGAPencil 'pen' to 'tgaPenPixel'
 // Do nothing if arguments are invalid

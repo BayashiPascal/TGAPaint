@@ -16,15 +16,13 @@
 // Do nothing if arguments are invalid
 void MergeBytes(TGAPixel *pixel, unsigned char *p, int bytes);
 
-// Function to calculate the ratio of coverage of pixel 'q' by a square
-// centered on 'p' with a size of 'r'
-// Return 1.0 if arguments are invalid
-float TGARatioCoveragePixelSquare(VecFloat *p, float r, VecFloat *q);
+// Draw one stroke at 'pos' with 'pen' of type tgaPenShapoid
+// Don't do anything in case of invalid arguments
+void TGAStrokePixShapoid(TGA *tga, VecFloat *pos, TGAPencil *pen);
 
-// Function to calculate the ratio of coverage of pixel 'q' by a circle
-// centered on 'p' with a radius of 'r'
-// Return 1.0 if arguments are invalid
-float TGARatioCoveragePixelRound(VecFloat *p, float r, VecFloat *q);
+// Draw one stroke at 'pos' with 'pen' of type tgaPenPixel
+// Don't do anything in case of invalid arguments
+void TGAStrokePixOnePixel(TGA *tga, VecFloat *pos, TGAPencil *pen);
 
 // ================ Functions implementation ==================
 
@@ -388,6 +386,21 @@ void TGAPrintHeader(TGA *tga, FILE *stream) {
   fprintf(stream, "Descriptor:        %d\n", h->_imageDescriptor);
 }
 
+// Return true if 'pos' is inside 'tga'
+// Return false else, or if arguments are invalid
+bool TGAIsPosInside(TGA *tga, VecShort *pos) {
+  // Check arguments
+  if (tga == NULL || pos == NULL || VecDim(pos) < 2)
+    return false;
+  // If the position is in the tga
+  if (VecGet(pos, 0) >= 0 && VecGet(pos, 0) < tga->_header->_width && 
+    VecGet(pos, 1) >= 0 && VecGet(pos, 1) < tga->_header->_height)
+    return true;
+  // Else, the position is not in the tga
+  else
+    return false;
+}
+
 // Get a pointer to the pixel at coord (x,y) = (pos[0],pos[1])
 // Return NULL in case of invalid arguments
 TGAPixel* TGAGetPix(TGA *tga, VecShort *pos) {
@@ -395,8 +408,7 @@ TGAPixel* TGAGetPix(TGA *tga, VecShort *pos) {
   if (tga == NULL || pos == NULL ||
     tga->_pixels == NULL || tga->_header == NULL) 
     return NULL;
-  if (VecGet(pos, 0) < 0 || VecGet(pos, 0) >= tga->_header->_width || 
-    VecGet(pos, 1) < 0 || VecGet(pos, 1) >= tga->_header->_height) 
+  if (TGAIsPosInside(tga, pos) == false) 
     return NULL;
   // Set a pointer to the pixels
   TGAPixel *p = tga->_pixels;
@@ -421,140 +433,153 @@ void TGASetPix(TGA *tga, VecShort *pos, TGAPixel *pix) {
     memcpy(p, pix, sizeof(TGAPixel));
 }
 
+// Draw one stroke at 'pos' with 'pen' of type tgaPenPixel
+// Don't do anything in case of invalid arguments
+void TGAStrokePixOnePixel(TGA *tga, VecFloat *pos, TGAPencil *pen) {
+  // Check arguments
+  if (tga == NULL || pos == NULL || pen == NULL) return;
+  // Declare a variable for the integer position of the 
+  // current pixel
+  VecShort *q = VecShortCreate(2);
+  if (q == NULL)
+    return;
+  VecSet(q, 0, (short)floor(VecGet(pos, 0)));
+  VecSet(q, 1, (short)floor(VecGet(pos, 1)));
+  // Get the curent pixel of the tga
+  TGAPixel *pixTga = TGAGetPix(tga, q);
+  // If the pixel is not in read only mode
+  if (TGAPixelIsReadOnly(pixTga) == false) {
+    // Get the curent pixel of the pencil
+    TGAPixel *pixPen = TGAPencilGetPixel(pen);
+    // Get a blend of colors according to pen opacity
+    TGAPixel *pix = TGABlendPixel(pixTga, pixPen, 
+      (float)(pixPen->_rgba[3]) / 255.0);
+    // Correct opacity
+    if (pix->_rgba[3] < 255 - pixPen->_rgba[3])
+      pix->_rgba[3] += pixPen->_rgba[3];
+    else
+      pix->_rgba[3] = 255;
+    // Set the color of the current pixel
+    memcpy(pixTga, pix, sizeof(TGAPixel));
+    // Free the memory used by the pixel from the pencil
+    TGAFreePixel(&pixPen);
+    TGAFreePixel(&pix);
+    VecFree(&q);
+  }
+}
+
+// Draw one stroke at 'pos' with 'pen' of type tgaPenShapoid
+// Don't do anything in case of invalid arguments
+void TGAStrokePixShapoid(TGA *tga, VecFloat *pos, TGAPencil *pen) {
+  // Check arguments
+  if (tga == NULL || pos == NULL || pen == NULL) return;
+  // Set a pointer to pixels
+  TGAPixel *pixels = tga->_pixels;
+  // Get the curent color of the pencil
+  TGAPixel *pix = TGAPencilGetPixel(pen);
+  // Declare variable for coordinates of pixel
+  VecFloat *p = VecFloatCreate(2);
+  // Declare a clone of the pen tip
+  Shapoid *penTip = ShapoidClone(pen->_tip);
+  // Declare a variable for the integer position of the 
+  // current pixel
+  VecShort *q = VecShortCreate(2);
+  // Declare a Facoid to represent the pixel
+  Shapoid *pixel = FacoidCreate(2);
+  // If we couldn't allocate memory or get the necessary information
+  if (q == NULL || p == NULL || pixel == NULL || penTip == NULL) {
+    // Free memory and stop here
+    VecFree(&p);
+    VecFree(&q);
+    ShapoidFree(&pixel);
+    ShapoidFree(&penTip);
+    return;
+  }
+  // Translate the clone of the pen tip to the pos
+  ShapoidTranslate(penTip, pos);
+  // Get the bounding box of the pen tip
+  Shapoid *tipBox = ShapoidGetBoundingBox(penTip);
+  // If we couldn't allocate memory
+  if (tipBox == NULL) {
+    // Free memory and stop here
+    VecFree(&p);
+    VecFree(&q);
+    ShapoidFree(&pixel);
+    ShapoidFree(&penTip);
+    return;
+  }
+  // Get the end pos of the tip box to avoid recalculate them
+  float end[2];
+  for (int i = 2; i--;)
+    end[i] = VecGet(tipBox->_pos, i) + VecGet(tipBox->_axis[i], i);
+  // Declare a variable to memorize the step in position
+  float delta = 0.5 * pen->_thickness;
+  if (delta > 1.0) delta = 1.0;
+  // For each pixel in the area affected by the pencil
+  for (VecSet(p, 0, VecGet(tipBox->_pos, 0)); 
+    VecGet(p, 0) < end[0] + TGA_EPSILON; 
+    VecSet(p, 0, VecGet(p, 0) + delta)) {
+    for (VecSet(p, 1, VecGet(tipBox->_pos, 1)); 
+      VecGet(p, 1) < end[1] + TGA_EPSILON; 
+      VecSet(p, 1, VecGet(p, 1) + delta)) {
+      if (ShapoidIsPosInside(penTip, p) == true) {
+        // Get the integer position of the current pixel
+        for (int i = 2; i--;)
+          VecSet(q, i, (short)floor(VecGet(p, i)));
+        // If the pixel is in the tga
+        if (TGAIsPosInside(tga, q) == true) {
+          // Calculate the index of the current pixel
+          int iPix = VecGet(q, 1) * tga->_header->_width + VecGet(q, 0);
+          // If the pen doesn't use anitalias
+          if (pen->_antialias == false) {
+            // Set the value of the pixel
+            memcpy(pixels + iPix, pix, sizeof(TGAPixel));
+          // Else, if the pencil uses antialias
+          } else {
+            // Position the pixel Facoid
+            for(int i = 2; i--;)
+              VecSet(pixel->_pos, i, floor(VecGet(p, i)));
+            // Get the ratio coverage of this pixel by the pen tip
+            float ratio = ShapoidGetCoverageRatio(penTip, pixel);
+            // Get a pointer to the current pixel
+            TGAPixel *curPix = TGAGetPix(tga, q);
+            // If the pointer is not null
+            if (curPix != NULL) {
+              // Blend the current pixel with the pixel from 
+              // the pencil
+              TGAPixel *blendPix = TGABlendPixel(curPix, pix, ratio);
+              // If the blended pixel is not null
+              if (blendPix != NULL) {
+                // Set the current pixel to the blended pixel
+                memcpy(pixels + iPix, blendPix, sizeof(TGAPixel));
+                // Free memory used by the blended pixel
+                TGAFreePixel(&blendPix);
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  // Free memory
+  VecFree(&p);
+  VecFree(&q);
+  ShapoidFree(&tipBox);
+  ShapoidFree(&pixel);
+  ShapoidFree(&penTip);
+}
+
 // Draw one stroke at 'pos' with 'pen'
 // Don't do anything in case of invalid arguments
 void TGAStrokePix(TGA *tga, VecFloat *pos, TGAPencil *pen) {
   // Check arguments
-  if (tga == NULL || pos == NULL || pen == NULL ||
-    tga->_pixels == NULL || tga->_header == NULL) return;
+  if (tga == NULL || pos == NULL || pen == NULL) return;
   // If the shape of the pencil is pixel 
   if (pen->_shape == tgaPenPixel) {
-    // Declare a variable for the integer position of the 
-    // current pixel
-    VecShort *q = VecShortCreate(2);
-    if (q == NULL)
-      return;
-    VecSet(q, 0, (short)floor(VecGet(pos, 0)));
-    VecSet(q, 1, (short)floor(VecGet(pos, 1)));
-    // Get the curent pixel of the tga
-    TGAPixel *pixTga = TGAGetPix(tga, q);
-    // If the pixel is not in read only mode
-    if (TGAPixelIsReadOnly(pixTga) == false) {
-      // Get the curent pixel of the pencil
-      TGAPixel *pixPen = TGAPencilGetPixel(pen);
-      // Get a blend of colors according to pen opacity
-      TGAPixel *pix = TGABlendPixel(pixTga, pixPen, 
-        (float)(pixPen->_rgba[3]) / 255.0);
-      // Correct opacity
-      if (pix->_rgba[3] < 255 - pixPen->_rgba[3])
-        pix->_rgba[3] += pixPen->_rgba[3];
-      else
-        pix->_rgba[3] = 255;
-      // Set the color of the current pixel
-      memcpy(pixTga, pix, sizeof(TGAPixel));
-      // Free the memory used by the pixel from the pencil
-      TGAFreePixel(&pixPen);
-      TGAFreePixel(&pix);
-      VecFree(&q);
-    }
-  // Else, if the shape of the pencil is square or round
-  } else if (pen->_shape == tgaPenRound || 
-    pen->_shape == tgaPenSquare) {
-    // Set a pointer to pixels
-    TGAPixel *pixels = tga->_pixels;
-    // Get the curent color of the pencil
-    TGAPixel *pix = TGAPencilGetPixel(pen);
-    // Declare variable for coordinates of pixel
-    VecFloat *p = VecFloatCreate(2);
-    if (p == NULL) {
-      return;
-    }
-    // Calculate the radius of the area affected by the pencil
-    float r = pen->_thickness * 0.5;
-    // For each pixel in the area affected by the pencil
-    for (VecSet(p, 0, VecGet(pos, 0) - r); 
-      VecGet(p, 0) < VecGet(pos, 0) + r + TGA_EPSILON; 
-      VecSet(p, 0, VecGet(p, 0) + 1.0)) {
-      for (VecSet(p, 1, VecGet(pos, 1) - r); 
-        VecGet(p, 1) < VecGet(pos, 1) + r + TGA_EPSILON; 
-        VecSet(p, 1, VecGet(p, 1) + 1.0)) {
-        // Declare a variable for the integer position of the 
-        // current pixel
-        VecShort *q = VecShortCreate(2);
-        if (q == NULL) {
-          VecFree(&p);
-          VecFree(&q);
-          return;
-        }
-        VecSet(q, 0, (short)floor(VecGet(p, 0)));
-        VecSet(q, 1, (short)floor(VecGet(p, 1)));
-        // If the current pixel is in the TGA
-        if (VecGet(q, 0) >= 0 && VecGet(q, 0) < tga->_header->_width && 
-          VecGet(q, 1) >= 0 && VecGet(q, 1) < tga->_header->_height) {
-          // Calculate the distance of the current pixel to 
-          // the center of the pencil
-          float l = VecDist(p, pos);
-          // If the pencil is squared, or round and current pixel is
-          // in the pencil area
-          if ((pen->_shape == tgaPenRound && floor(l) <= floor(r)) ||
-            pen->_shape == tgaPenSquare) {
-            // Calculate the index of the current pixel
-            int iPix = VecGet(q, 1) * tga->_header->_width + 
-              VecGet(q, 0);
-            // If the pen doesn't use anitalias
-            if (pen->_antialias == false) {
-              // Set the value of the pixel
-              memcpy(pixels + iPix, pix, sizeof(TGAPixel));
-            // Else, if the pencil uses antialias
-            } else {
-              // Declare a variable to calculate the coverage ratio
-              float ratio = 1.0;
-              // Declare a variable to calculate the coordinates of the
-              // bottom left of the current pixel
-              VecFloat *qf = VecFloatCreate(2);
-              if (qf == NULL) {
-                TGAFreePixel(&pix);
-                VecFree(&p);
-                return;
-              }
-              VecSet(qf, 0, floor(VecGet(p, 0)));
-              VecSet(qf, 1, floor(VecGet(p, 1)));
-              // If the pencil is square
-              if (pen->_shape == tgaPenSquare) {
-                // Calculate the coverage ratio
-                ratio = TGARatioCoveragePixelSquare(pos, r, qf);
-              // Else, if the pencil is round
-              } else if (pen->_shape == tgaPenRound) {
-                // Calculate the coverage ratio
-                ratio = TGARatioCoveragePixelRound(pos, r, qf);
-              }
-              // Get a pointer to the current pixel
-              TGAPixel *curPix = TGAGetPix(tga, q);
-              // If the pointer is not null
-              if (curPix != NULL) {
-                // Blend the current pixel with the pixel from 
-                // the pencil
-                TGAPixel *blendPix = TGABlendPixel(curPix, pix, ratio);
-                // If the blended pixel is not null
-                if (blendPix != NULL) {
-                  // Set the current pixel to the blended pixel
-                  memcpy(pixels + iPix, blendPix, sizeof(TGAPixel));
-                  // Free memory used by the blended pixel
-                  TGAFreePixel(&blendPix);
-                }
-              }
-              // Free memory
-              VecFree(&qf);
-            }
-          }
-        }
-        // Free memory
-        VecFree(&q);
-      }
-    }
-    // Free the memory used by the pixel from the pencil
-    TGAFreePixel(&pix);
-    VecFree(&p);
+    TGAStrokePixOnePixel(tga, pos, pen);
+  // Else, if the shape of the pencil is shapoid
+  } else if (pen->_shape == tgaPenShapoid) {
+    TGAStrokePixShapoid(tga, pos, pen);
   }
 }
 
@@ -578,24 +603,24 @@ void TGADrawLine(TGA *tga, VecFloat *from, VecFloat *to,
 void TGADrawCurve(TGA *tga, BCurve *curve, TGAPencil *pen) {
   // Check arguments
   if (tga == NULL || curve == NULL || pen == NULL || 
-    BCurveDim(curve) != 2 || BCurveOrder(curve) < 1)
+    BCurveOrder(curve) < 1)
     return;
   // GetThe approximate length of the curve
   float l = BCurveApproxLen(curve);
   // Declare a variable to memorize the step of the parameter of 
   // the BCurve
   float dt = 0.5 / l;
+  // Ensure the step is no greater than 0.5 to avoid jump over pixel
+  if (dt > 0.5) dt = 0.5;
   // Declare the parameter of the curve
   float t = 0.0;
   // Declare a variable to memorize the position on the curve
   VecFloat *pos = VecClone(curve->_ctrl[0]);
   // Declare a variable to memorize the last pixel stroke to avoid
   // stroking several time the same pixel as dt is underestimated
-  VecShort *prevPos = VecShortCreate(2);
+  VecFloat *prevPos = VecClone(pos);
   if (prevPos == NULL)
     return;
-  for (int dim = 2; dim--;)
-    VecSet(prevPos, dim, (short)floor(VecGet(curve->_ctrl[0], dim))); 
   // Set the blend value of the pencil to calculate the pencil 
   // current color
   TGAPencilSetBlend(pen, 0.0);
@@ -608,23 +633,26 @@ void TGADrawCurve(TGA *tga, BCurve *curve, TGAPencil *pen) {
     pos = BCurveGet(curve, t);
     // If the current position is not on the same pixel as previously
     // stroke
-    if ((short)floor(VecGet(pos, 0)) != VecGet(prevPos, 0) || 
-      (short)floor(VecGet(pos, 1)) != VecGet(prevPos, 1)) {
+    if ((short)floor(VecGet(pos, 0)) !=   
+      (short)floor(VecGet(prevPos, 0)) || 
+      (short)floor(VecGet(pos, 1)) != 
+      (short)floor(VecGet(prevPos, 1))) {
       // Set the blend value of the pencil to calculate the pencil 
       // current color
       TGAPencilSetBlend(pen, t);
       // Stroke the pixel
       TGAStrokePix(tga, pos, pen);
       // Update the position of the last stroke pixel
-      for (int dim = 2; dim--;)
-        VecSet(prevPos, dim, (short)floor(VecGet(pos, dim))); 
+      VecCopy(prevPos, pos);
     }
     // Move along the curve by dt
     t += dt;
   }
   // If the last pixel hasn't been stroke
-  if ((short)floor(VecGet(curve->_ctrl[curve->_order], 0)) != VecGet(prevPos, 0) || 
-    (short)floor(VecGet(curve->_ctrl[curve->_order], 1)) != VecGet(prevPos, 1))
+  if ((short)floor(VecGet(curve->_ctrl[curve->_order], 0)) != 
+    (short)floor(VecGet(prevPos, 0)) || 
+    (short)floor(VecGet(curve->_ctrl[curve->_order], 1)) != 
+    (short)floor(VecGet(prevPos, 1)))
     // Stroke the last pixel
     TGAStrokePix(tga, curve->_ctrl[curve->_order], pen);  
   // Free memory
@@ -1167,7 +1195,7 @@ TGAPixel* TGABlendPixel(TGAPixel *pixA, TGAPixel *pixB, float blend) {
 }
 
 // Create a default TGAPencil with all color set to transparent
-// solid mode, thickness = 1.0, square shape, no antialias
+// solid mode, thickness = 1.0, tip as facoid, no antialias
 // Return NULL if it couldn't allocate memory
 TGAPencil* TGAGetPencil(void) {
   // Allocate memory for the new pencil
@@ -1191,12 +1219,12 @@ TGAPencil* TGAGetPencil(void) {
     // Set the default value of the pencil
     ret->_activeColor = 0;
     ret->_modeColor = tgaPenSolid;
-    ret->_shape = tgaPenSquare;
     ret->_blendColor[0] = 0;
     ret->_blendColor[1] = 1;
     ret->_blend = 0.0;
     ret->_thickness = 1.0;
     ret->_antialias = false;
+    TGAPencilSetShapeSquare(ret);
   }
   // Return the new pencil
   return ret;
@@ -1328,11 +1356,27 @@ void TGAPencilSetColRGBA(TGAPencil *pen, unsigned char *rgba) {
 }
 
 // Set the thickness of TGAPencil 'pen' to 'v'
+// Equivalent to a scale of the shapoid of the tip
 // Do nothing if arguments are invalid
 void TGAPencilSetThickness(TGAPencil *pen, float v) {
   // Check arguments
   if (pen == NULL || v < 0.0)
     return;
+  // If the pen tip is a shapoid
+  if (pen->_tip != NULL) {
+    // Declare a variable to memorize the scaling in each dimension
+    VecFloat *s = VecFloatCreate(ShapoidGetDim(pen->_tip));
+    // If we could allocate memory
+    if (s != NULL) {
+      // Set the scale values
+      for (int i = VecDim(s); i--;)
+        VecSet(s, i, v / pen->_thickness);
+      // Grow the shapoid
+      ShapoidGrow(pen->_tip, s);
+      // Free memory
+      VecFree(&s);
+    }
+  }
   // Set the thickness
   pen->_thickness = v;
 }
@@ -1356,24 +1400,126 @@ void TGAPencilSetBlend(TGAPencil *pen, float v) {
   pen->_blend = v;
 }
 
-// Set the shape of the TGAPencil 'pen' to 'tgaPenSquare'
+// Set the shape of the TGAPencil 'pen' to 'tgaPenShapoid' and 
+// set the tip of the pen to a new facoid centered on the origin
+// and scaled to the pen thickness
 // Do nothing if arguments are invalid
 void TGAPencilSetShapeSquare(TGAPencil *pen) {
   // Check arguments
   if (pen == NULL)
     return;
+  // Declare a VecFloat used for Shapoid creation
+  VecFloat *v = VecFloatCreate(2);
+  // If we couldn't allocate memory
+  if (v == NULL) {
+    // Stop here
+    return;
+  }
   // Set the shape
-  pen->_shape = tgaPenSquare;
+  pen->_shape = tgaPenShapoid;
+  // Free the eventual actual shapoid
+  ShapoidFree(&(pen->_tip));
+  // If there was a shapoid allocated for the pen tip
+  if (pen->_tip != NULL)
+    // Free this shapoid
+    ShapoidFree(&(pen->_tip));
+  // Create a new Facoid
+  pen->_tip = FacoidCreate(2);
+  // If we could allocate memory
+  if (pen->_tip != NULL) {
+    // Scale the Shapoid
+    for (int i = 2; i--;)
+      VecSet(v, i, pen->_thickness);
+    ShapoidScale(pen->_tip, v);
+    // Center the Shapoid on origin
+    for (int i = 2; i--;)
+      VecSet(v, i, -0.5 * pen->_thickness);
+    ShapoidTranslate(pen->_tip, v);
+  // Else, if we couldn't allocate memory
+  } else {
+    // Reset the pen shape to pixel for safety
+    pen->_shape = tgaPenPixel;
+  }
+  // Free memory
+  VecFree(&v);
 }
 
-// Set the shape of the TGAPencil 'pen' to 'tgaPenRound'
+// Set the shape of the TGAPencil 'pen' to 'tgaPenShapoid' and
+// set the tip of the pen to a new ellipsoid scaled to the pen thickness
 // Do nothing if arguments are invalid
 void TGAPencilSetShapeRound(TGAPencil *pen) {
   // Check arguments
   if (pen == NULL)
     return;
+  // Declare a VecFloat used for Shapoid creation
+  VecFloat *v = VecFloatCreate(2);
+  // If we couldn't allocate memory
+  if (v == NULL) {
+    // Stop here
+    return;
+  }
   // Set the shape
-  pen->_shape = tgaPenRound;
+  pen->_shape = tgaPenShapoid;
+  // If there was a shapoid allocated for the pen tip
+  if (pen->_tip != NULL)
+    // Free this shapoid
+    ShapoidFree(&(pen->_tip));
+  // Free the eventual actual shapoid
+  ShapoidFree(&(pen->_tip));
+  // Create a new Facoid
+  pen->_tip = SpheroidCreate(2);
+  // If we could allocate memory
+  if (pen->_tip != NULL) {
+    // Scale the Shapoid
+    for (int i = 2; i--;)
+      VecSet(v, i, pen->_thickness);
+    ShapoidScale(pen->_tip, v);
+  // Else, if we couldn't allocate memory
+  } else {
+    // Reset the pen shape to pixel for safety
+    pen->_shape = tgaPenPixel;
+  }
+  // Free memory
+  VecFree(&v);
+}
+
+// Set the shape of the TGAPencil 'pen' to 'tgaPenShapoid' and
+// set the tip of the pen to a clone of the Shapoid 'shape'
+// 'shape' is considered to be centered and given at a thickness 
+// of 1.0 before rescaling to 'pen' thickness
+// Do nothing if arguments are invalid
+void TGAPencilSetShapeShapoid(TGAPencil *pen, Shapoid *shape) {
+  // Check arguments
+  if (pen == NULL || shape == NULL)
+    return;
+  // Declare a VecFloat used for Shapoid creation
+  VecFloat *v = VecFloatCreate(2);
+  // If we couldn't allocate memory
+  if (v == NULL) {
+    // Stop here
+    return;
+  }
+  // Set the shape
+  pen->_shape = tgaPenShapoid;
+  // If there was a shapoid allocated for the pen tip
+  if (pen->_tip != NULL)
+    // Free this shapoid
+    ShapoidFree(&(pen->_tip));
+  // Create the new pen tip
+  pen->_tip = ShapoidClone(shape);
+  // If we could allocate memory
+  if (pen->_tip != NULL) {
+    // Grow the Shapoid
+    for (int i = 2; i--;)
+      VecSet(v, i, pen->_thickness);
+    ShapoidGrow(pen->_tip, v);
+  // Else, if we couldn't allocate memory
+  } else {
+    // Reset the pen shape to pixel for safety
+    pen->_shape = tgaPenPixel;
+  }
+  // Free memory
+  VecFree(&v);
 }
 
 // Set the shape of the TGAPencil 'pen' to 'tgaPenPixel'
@@ -1384,6 +1530,10 @@ void TGAPencilSetShapePixel(TGAPencil *pen) {
     return;
   // Set the shape
   pen->_shape = tgaPenPixel;
+  // If there was a shapoid allocated for the pen tip
+  if (pen->_tip != NULL)
+    // Free this shapoid
+    ShapoidFree(&(pen->_tip));
 }
 
 
@@ -1434,66 +1584,6 @@ void MergeBytes(TGAPixel *pixel, unsigned char *p, int bytes) {
     pixel->_rgba[2] = (p[0] & 0x1f) << 3;
     pixel->_rgba[3] = (p[1] & 0x80);
   }
-}
-
-// Function to calculate the ratio of coverage of pixel 'q' by a square
-// centered on 'p' with a size of 'r'
-// Return 1.0 if arguments are invalid
-float TGARatioCoveragePixelSquare(VecFloat *p, float r, VecFloat *q) {
-  float ratio = 1.0;
-  // Check arguments
-  if (p == NULL || q == NULL)
-    return ratio;
-  // Get the intersecting box
-  float box[4];
-  box[0] = (VecGet(p, 0) - r < VecGet(q, 0) ? 
-    VecGet(q, 0) : VecGet(p, 0) - r);
-  box[1] = (VecGet(p, 1) - r < VecGet(q, 1) ? 
-    VecGet(q, 1) : VecGet(p, 1) - r);
-  box[2] = (VecGet(p, 0) + r > VecGet(q, 0) + 1.0 ? 
-    VecGet(q, 0) + 1.0 : VecGet(p, 0) + r);
-  box[3] = (VecGet(p, 1) + r > VecGet(q, 1) + 1.0 ? 
-    VecGet(q, 1) + 1.0 : VecGet(p, 1) + r);
-  // The ratio is equal to the area of the intersecting box because the 
-  // pixel area is 1
-  ratio = (box[2] - box[0]) * (box[3] - box[1]);
-  // Return the ratio
-  return ratio;
-}
-
-// Function to calculate the ratio of coverage of pixel 'q' by a circle
-// centered on 'p' with a radius of 'r'
-// Return 1.0 if arguments are invalid
-float TGARatioCoveragePixelRound(VecFloat *p, float r, VecFloat *q) {
-  float ratio = 1.0;
-  // Check arguments
-  if (p == NULL || q == NULL)
-    return ratio;
-  // Calculate the ratio by checking a grid of 100 points inside 
-  // the pixel 
-  // Declare variables for the calcul
-  float delta = 0.1;
-  float dp[2];
-  float sum = 0.0;
-  // For each point
-  for (dp[0] = 0.0; dp[0] < 1.0; dp[0] += delta) {
-    for (dp[1] = 0.0; dp[1] < 1.0; dp[1] += delta) {
-      // Calculate the distance of this point to the center of 
-      // the circle
-      float l = sqrt(pow(VecGet(p, 0) - (VecGet(q, 0) + dp[0]), 2.0) + 
-        pow(VecGet(p, 1) - (VecGet(q, 1) + dp[1]), 2.0));
-      // If the point is in the circle
-      if (l <= r) {
-        // Increment the number of points inside the circle
-        sum += 1.0;
-      }
-    }
-  }
-  // The ratio is the number of points divided by the total number of
-  // points
-  ratio = sum / pow(1.0 / delta, 2.0);
-  // Return the ratio
-  return ratio;
 }
 
 // Get the average color of the whole image
