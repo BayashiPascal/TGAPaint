@@ -530,7 +530,7 @@ void TGAStrokePixShapoid(TGA *tga, VecFloat *pos, TGAPencil *pen) {
         if (TGAIsPosInside(tga, q) == true) {
           // Calculate the index of the current pixel
           int iPix = VecGet(q, 1) * tga->_header->_width + VecGet(q, 0);
-          // If the pen doesn't use anitalias
+          // If the pen doesn't use antialias
           if (pen->_antialias == false) {
             // Set the value of the pixel
             memcpy(pixels + iPix, pix, sizeof(TGAPixel));
@@ -562,6 +562,7 @@ void TGAStrokePixShapoid(TGA *tga, VecFloat *pos, TGAPencil *pen) {
     }
   }
   // Free memory
+  TGAFreePixel(&pix);
   VecFree(&p);
   VecFree(&q);
   ShapoidFree(&tipBox);
@@ -600,7 +601,7 @@ void TGADrawLine(TGA *tga, VecFloat *from, VecFloat *to,
   
 // Draw the BCurve 'curve' (must be of dimension 2 and order > 0)
 // do nothing if arguments are invalid
-void TGADrawCurve(TGA *tga, BCurve *curve, TGAPencil *pen) {
+void TGADrawBCurve(TGA *tga, BCurve *curve, TGAPencil *pen) {
   // Check arguments
   if (tga == NULL || curve == NULL || pen == NULL || 
     BCurveOrder(curve) < 1)
@@ -658,6 +659,22 @@ void TGADrawCurve(TGA *tga, BCurve *curve, TGAPencil *pen) {
   // Free memory
   VecFree(&pos);
   VecFree(&prevPos);
+}
+
+// Draw the SCurve 'curve' (must be of dimension 2)
+// do nothing if arguments are invalid
+void TGADrawSCurve(TGA *tga, SCurve *curve, TGAPencil *pen) {
+  // Check arguments
+  if (tga == NULL || curve == NULL || pen == NULL)
+    return;
+  // Declare a pointer to loop on BCurves of the SCurve
+  GSetElem *ptr = curve->_curves->_head;
+  while (ptr != NULL) {
+    // Draw the curve
+    TGADrawBCurve(tga, (BCurve*)(ptr->_data), pen);
+    // Move to the next curve
+    ptr = ptr->_next;
+  }
 }
   
 // Draw a rectangle between 'from' and 'to' with pencil 'pen'
@@ -767,22 +784,14 @@ void TGADrawShapoid(TGA *tga, Shapoid *s, TGAPencil *pen) {
   // Check arguments
   if (tga == NULL || s == NULL || pen == NULL || ShapoidGetDim(s) != 2)
     return;
-  // Get the BCurves equivalent to the Shapoid
-  GSet *set = ShapoidGetApproxBCurve2D(s);
-  // If the set is not empty
-  if (set != NULL) {
-    // Get the first curve
-    BCurve *curve = (BCurve*)(GSetPop(set));
-    // While there is a curve to draw
-    while (curve != NULL) {
-      // Draw the curve
-      TGADrawCurve(tga, curve, pen);
-      // Free memory used by the curve
-      BCurveFree(&curve);
-      // Get the next curve
-      curve = (BCurve*)(GSetPop(set));
-    }
-    GSetFree(&set);
+  // Get the SCurve equivalent to the Shapoid
+  SCurve *curve = Shapoid2SCurve(s);
+  // If we could get the SCurve
+  if (curve != NULL) {
+    // Draw the SCurve
+    TGADrawSCurve(tga, curve, pen);
+    // Free memory
+    SCurveFree(&curve);
   }
 }
 
@@ -1098,25 +1107,26 @@ void TGAPrintChar(TGA *tga, TGAPencil *pen, TGAFont *font,
   // and the right direction of the font
   float theta = TGAFontGetAngleWithAbciss(font);
   // For each curve in the character
-  for (int iCurve = 0; iCurve < ch->_nbCurve; ++iCurve) {
+  int nbCurve = SCurveGetNbCurve(ch->_curve);
+  for (int iCurve = 0; iCurve < nbCurve; ++iCurve) {
     // Clone the curve to Set a pointer to the current curve
-    BCurve *curve = BCurveClone(ch->_curves[iCurve]);
-    if (curve == NULL)
-      return;
-    // Scale the curve
-    VecFloat *scale = VecGetOp(font->_scale, font->_size, NULL, 0.0);
-    if (scale == NULL)
-      return;
-    BCurveScale(curve, scale);
-    // Rotate the curve
-    BCurveRot2D(curve, theta);
-    // Translate the curve
-    BCurveTranslate(curve, pos);
-    // Draw the curve
-    TGADrawCurve(tga, curve, pen);
-    // Free memory
-    BCurveFree(&curve);
-    VecFree(&scale);
+    BCurve *curve = BCurveClone(SCurveGet(ch->_curve, iCurve));
+    if (curve != NULL) {
+      // Scale the curve
+      VecFloat *scale = VecGetOp(font->_scale, font->_size, NULL, 0.0);
+      if (scale == NULL)
+        return;
+      BCurveScale(curve, scale);
+      // Rotate the curve
+      BCurveRot2D(curve, theta);
+      // Translate the curve
+      BCurveTranslate(curve, pos);
+      // Draw the curve
+      TGADrawCurve(tga, curve, pen);
+      // Free memory
+      BCurveFree(&curve);
+      VecFree(&scale);
+    }
   }
 }
   
@@ -1224,6 +1234,7 @@ TGAPencil* TGAGetPencil(void) {
     ret->_blend = 0.0;
     ret->_thickness = 1.0;
     ret->_antialias = false;
+    ret->_tip = NULL;
     TGAPencilSetShapeSquare(ret);
   }
   // Return the new pencil

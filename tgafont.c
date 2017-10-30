@@ -46,12 +46,26 @@ TGAFont* TGAFontCreate(tgaFont font) {
     ret->_anchor = tgaFontAnchorTopLeft;
     // Set the default orientation
     ret->_right = VecFloatCreate(2);
+    if (ret->_right == NULL) {
+      VecFree(&(ret->_space));
+      VecFree(&(ret->_scale));
+      free(ret);
+      return NULL;
+    }
     VecSet(ret->_right, 0, 1.0);
     VecSet(ret->_right, 1, 0.0);
     // For each character
-    for (int iChar = 256; iChar--;)
+    for (int iChar = 256; iChar--;) {
       // By default set this character definition as empty (no curves)
-      ret->_char[iChar]._nbCurve = 0;
+      ret->_char[iChar]._curve = SCurveCreate(2);
+      if (ret->_char[iChar]._curve == NULL) {
+        VecFree(&(ret->_space));
+        VecFree(&(ret->_scale));
+        VecFree(&(ret->_right));
+        free(ret);
+        return NULL;
+      }
+    }
     // If the requested font is the default one
     if (font == tgaFontDefault)
       // Create the default font characters' curves
@@ -69,8 +83,7 @@ void TGAFreeFont(TGAFont **font) {
     return;
   // Free the memory
   for (int iChar = 256; iChar--;)
-    for (int iCurve = (*font)->_char[iChar]._nbCurve; iCurve--;)
-      BCurveFree((*font)->_char[iChar]._curves + iCurve);
+    SCurveFree(&((*font)->_char[iChar]._curve));
   VecFree(&((*font)->_scale));
   VecFree(&((*font)->_space));
   VecFree(&((*font)->_right));
@@ -278,31 +291,32 @@ Shapoid* TGAFontGetStringBound(TGAFont *font, unsigned char *s) {
 }
 
 // Function to initialize the curves of one char
-void TGAFontInitChar(TGAChar *ch, float *c) {
-  for (int iCurve = ch->_nbCurve; iCurve--;) {
-    ch->_curves[iCurve] = BCurveCreate(3, 2);
-    if (ch->_curves[iCurve] != NULL)
+void TGAFontInitChar(TGAChar *ch, int nbCurve, float *c) {
+  BCurve *curve = BCurveCreate(3, 2);
+  if (curve != NULL) {
+    for (int iCurve = nbCurve; iCurve--;) {
       for (int iCtrl = 4; iCtrl--;)
         for (int dim = 2; dim--;)
-          VecSet(ch->_curves[iCurve]->_ctrl[iCtrl], dim, 
+          VecSet(curve->_ctrl[iCtrl], dim, 
             c[iCurve * 8 + iCtrl * 2 + dim]);
+      SCurveAdd(ch->_curve, curve);
+    }
   }
+  BCurveFree(&curve);
 }
 
 // Create the curves of each characters for the default font
 void TGAFontCreateDefault(TGAFont *font) {
   TGAChar *ch = NULL;
   ch = font->_char + 'A';
-  ch->_nbCurve = 3;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 3,
     (float[]){
         0.0,0.0,0.0,0.18,0.32,1.0,0.5,1.0,
         0.5,1.0,0.68,1.0,1.0,0.18,1.0,0.0,
         0.15,0.5,0.15,0.5,0.85,0.5,0.85,0.5
     });
   ch = font->_char + 'B';
-  ch->_nbCurve = 4;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 4,
     (float[]){
         0.00,0.00,0.00,0.00,0.00,1.00,0.00,1.00,
         0.00,1.00,0.77,1.00,0.77,0.58,0.00,0.59,
@@ -310,8 +324,7 @@ void TGAFontCreateDefault(TGAFont *font) {
         1.00,0.26,1.00,0.00,0.50,0.00,0.00,0.00
     });
   ch = font->_char + 'C';
-  ch->_nbCurve = 4;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 4,
     (float[]){
         1.00,0.67,1.00,0.82,1.00,1.00,0.50,1.00,
         0.50,1.00,0.00,1.00,0.00,0.81,0.00,0.50,
@@ -319,8 +332,7 @@ void TGAFontCreateDefault(TGAFont *font) {
         0.50,0.00,1.00,0.00,1.00,0.17,1.00,0.33
     });
   ch = font->_char + 'D';
-  ch->_nbCurve = 5;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 5,
     (float[]){
         0.00,1.00,0.00,1.00,0.00,0.00,0.00,0.00,
         0.00,0.00,1.00,0.00,1.00,0.00,1.00,0.50,
@@ -329,8 +341,7 @@ void TGAFontCreateDefault(TGAFont *font) {
         0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00
     });
   ch = font->_char + 'E';
-  ch->_nbCurve = 5;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 5,
     (float[]){
         1.00,1.00,1.00,1.00,0.12,1.01,0.06,0.95,
         0.06,0.95,-0.01,0.90,0.00,0.10,0.05,0.05,
@@ -339,16 +350,14 @@ void TGAFontCreateDefault(TGAFont *font) {
         0.00,0.50,0.00,0.50,0.50,0.50,0.50,0.50
     });
   ch = font->_char + 'F';
-  ch->_nbCurve = 3;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 3,
     (float[]){
         0.00,0.50,0.00,0.50,0.50,0.50,0.50,0.50,
         1.00,1.00,1.00,1.00,0.12,1.01,0.06,0.95,
         0.06,0.95,-0.01,0.90,0.00,0.00,0.00,0.00
     });
   ch = font->_char + 'G';
-  ch->_nbCurve = 5;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 5,
     (float[]){
         1.00,0.84,1.00,1.00,0.74,1.00,0.50,1.00,
         0.50,1.00,0.00,1.00,0.00,0.81,0.00,0.50,
@@ -357,32 +366,28 @@ void TGAFontCreateDefault(TGAFont *font) {
         1.00,0.50,1.00,0.50,0.50,0.50,0.50,0.50
     });
   ch = font->_char + 'H';
-  ch->_nbCurve = 3;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 3,
     (float[]){
         1.00,1.00,1.00,1.00,1.00,0.00,1.00,0.00,
         0.00,0.50,0.00,0.50,1.00,0.50,1.00,0.50,
         0.00,1.00,0.00,1.00,0.00,0.00,0.00,0.00
     });
   ch = font->_char + 'I';
-  ch->_nbCurve = 3;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 3,
     (float[]){
         0.00,0.00,0.00,0.00,1.00,0.00,1.00,0.00,
         0.50,1.00,0.50,1.00,0.50,0.00,0.50,0.00,
         0.10,1.00,0.10,1.00,0.90,1.00,0.90,1.00
     });
   ch = font->_char + 'J';
-  ch->_nbCurve = 3;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 3,
     (float[]){
         0.66,1.00,0.66,1.00,1.00,0.00,0.50,0.00,
         0.50,0.00,0.00,0.00,0.00,0.33,0.00,0.50,
         0.00,1.00,0.00,1.00,1.00,1.00,1.00,1.00
     });
   ch = font->_char + 'K';
-  ch->_nbCurve = 4;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 4,
     (float[]){
         0.50,0.54,0.50,0.00,1.00,0.00,1.00,0.00,
         0.00,0.50,0.00,0.50,0.00,0.50,0.33,0.50,
@@ -390,15 +395,13 @@ void TGAFontCreateDefault(TGAFont *font) {
         0.00,1.00,0.00,1.00,0.00,0.00,0.00,0.00
     });
   ch = font->_char + 'L';
-  ch->_nbCurve = 2;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 2,
     (float[]){
         0.00,1.00,0.00,1.00,0.00,0.12,0.05,0.05,
         0.05,0.05,0.08,0.00,1.00,0.00,1.00,0.00
     });
   ch = font->_char + 'M';
-  ch->_nbCurve = 4;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 4,
     (float[]){
         0.00,0.00,0.00,0.00,0.00,1.00,0.00,1.00,
         0.00,1.00,0.00,1.00,0.34,0.67,0.50,0.67,
@@ -406,16 +409,14 @@ void TGAFontCreateDefault(TGAFont *font) {
         1.00,1.00,1.00,1.00,1.00,0.00,1.00,0.00
     });
   ch = font->_char + 'N';
-  ch->_nbCurve = 3;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 3,
     (float[]){
         0.00,0.00,0.00,0.00,0.00,1.00,0.00,1.00,
         0.00,1.00,0.33,1.00,0.66,0.00,1.00,0.00,
         1.00,0.00,1.00,0.00,1.00,1.00,1.00,1.00
     });
   ch = font->_char + 'O';
-  ch->_nbCurve = 4;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 4,
     (float[]){
         0.50,1.00,1.00,1.00,1.00,1.00,1.00,0.50,
         1.00,0.50,1.00,0.00,1.00,0.00,0.50,0.00,
@@ -423,16 +424,14 @@ void TGAFontCreateDefault(TGAFont *font) {
         0.00,0.50,0.00,1.00,0.00,1.00,0.50,1.00
     });
   ch = font->_char + 'P';
-  ch->_nbCurve = 3;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 3,
     (float[]){
         0.00,0.00,0.00,0.00,0.00,1.00,0.00,1.00,
         0.00,1.00,0.50,1.00,1.00,1.00,1.00,0.67,
         1.00,0.67,1.00,0.33,0.50,0.33,0.00,0.33
     });
   ch = font->_char + 'Q';
-  ch->_nbCurve = 5;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 5,
     (float[]){
         0.66,0.33,0.66,0.33,1.00,0.00,1.00,0.00,
         0.50,1.00,1.00,1.00,1.00,1.00,1.00,0.50,
@@ -441,8 +440,7 @@ void TGAFontCreateDefault(TGAFont *font) {
         0.00,0.50,0.00,1.00,0.00,1.00,0.50,1.00
     });
   ch = font->_char + 'R';
-  ch->_nbCurve = 4;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 4,
     (float[]){
         0.00,0.33,0.33,0.00,1.00,0.00,1.00,0.00,
         0.00,0.00,0.00,0.00,0.00,1.00,0.00,1.00,
@@ -450,8 +448,7 @@ void TGAFontCreateDefault(TGAFont *font) {
         1.00,0.67,1.00,0.33,0.50,0.33,0.00,0.33
     });
   ch = font->_char + 'S';
-  ch->_nbCurve = 5;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 5,
     (float[]){
         1.00,0.83,1.00,0.99,1.00,1.00,0.50,1.00,
         0.50,1.00,0.00,1.00,0.00,0.83,0.00,0.67,
@@ -460,29 +457,25 @@ void TGAFontCreateDefault(TGAFont *font) {
         0.50,0.00,0.00,0.00,0.00,0.16,0.00,0.33
     });
   ch = font->_char + 'T';
-  ch->_nbCurve = 2;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 2,
     (float[]){
         0.50,1.00,0.50,1.00,0.50,0.00,0.50,0.00,
         0.00,1.00,0.00,1.00,1.00,1.00,1.00,1.00
     });
   ch = font->_char + 'U';
-  ch->_nbCurve = 2;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 2,
     (float[]){
         0.00,1.00,0.00,0.50,0.01,0.00,0.50,0.00,
         0.50,0.00,1.00,0.00,1.00,0.51,1.00,1.00
     });
   ch = font->_char + 'V';
-  ch->_nbCurve = 2;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 2,
     (float[]){
         0.00,1.00,0.00,1.00,0.34,0.00,0.50,0.00,
         0.50,0.00,0.67,0.00,1.00,1.00,1.00,1.00
     });
   ch = font->_char + 'W';
-  ch->_nbCurve = 4;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 4,
     (float[]){
         0.00,1.00,0.00,1.00,0.16,0.00,0.33,0.00,
         0.33,0.00,0.50,0.00,0.50,0.50,0.50,0.50,
@@ -490,8 +483,7 @@ void TGAFontCreateDefault(TGAFont *font) {
         0.66,0.00,0.82,0.00,1.00,1.00,1.00,1.00
     });
   ch = font->_char + 'X';
-  ch->_nbCurve = 4;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 4,
     (float[]){
         1.00,1.00,1.00,1.00,0.50,0.67,0.50,0.51,
         0.50,0.51,0.50,0.33,0.00,0.00,0.00,0.00,
@@ -499,24 +491,21 @@ void TGAFontCreateDefault(TGAFont *font) {
         0.50,0.50,0.50,0.33,1.00,0.00,1.00,0.00
     });
   ch = font->_char + 'Y';
-  ch->_nbCurve = 3;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 3,
     (float[]){
         1.00,1.00,1.00,1.00,0.50,0.67,0.50,0.50,
         0.00,1.00,0.00,1.00,0.50,0.67,0.50,0.50,
         0.50,0.50,0.50,0.33,0.50,0.00,0.50,0.00
     });
   ch = font->_char + 'Z';
-  ch->_nbCurve = 3;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 3,
     (float[]){
         0.00,1.00,0.00,1.00,1.00,1.00,1.00,1.00,
         1.00,1.00,1.00,0.67,0.00,0.33,0.00,0.00,
         0.00,0.00,0.00,0.00,1.00,0.00,1.00,0.00
     });
   ch = font->_char + '0';
-  ch->_nbCurve = 5;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 5,
     (float[]){
         0.00,0.00,0.00,0.00,1.00,1.00,1.00,1.00,
         0.50,1.00,1.00,1.00,1.00,1.00,1.00,0.50,
@@ -525,16 +514,14 @@ void TGAFontCreateDefault(TGAFont *font) {
         0.00,0.50,0.00,1.00,0.00,1.00,0.50,1.00
     });
   ch = font->_char + '1';
-  ch->_nbCurve = 3;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 3,
     (float[]){
         0.00,0.00,0.00,0.00,1.00,0.00,1.00,0.00,
         0.00,0.67,0.33,0.67,0.50,1.00,0.50,1.00,
         0.50,1.00,0.50,1.00,0.50,0.00,0.50,0.00
     });
   ch = font->_char + '2';
-  ch->_nbCurve = 4;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 4,
     (float[]){
         0.00,0.67,0.00,1.00,0.34,1.00,0.50,1.00,
         0.50,1.00,0.66,1.00,1.00,1.00,1.00,0.67,
@@ -542,8 +529,7 @@ void TGAFontCreateDefault(TGAFont *font) {
         0.00,0.00,0.00,0.00,1.00,0.00,1.00,0.00
     });
   ch = font->_char + '3';
-  ch->_nbCurve = 6;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 6,
     (float[]){
         0.00,0.67,0.00,0.83,0.00,1.00,0.50,1.00,
         0.50,1.00,1.00,1.00,1.00,0.83,1.00,0.67,
@@ -553,16 +539,14 @@ void TGAFontCreateDefault(TGAFont *font) {
         0.50,0.00,0.00,0.00,0.00,0.16,0.00,0.33
     });
   ch = font->_char + '4';
-  ch->_nbCurve = 3;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 3,
     (float[]){
         1.00,0.33,1.00,0.33,0.00,0.33,0.00,0.33,
         0.00,0.33,0.50,0.50,0.66,1.00,0.66,1.00,
         0.66,1.00,0.66,1.00,0.66,0.00,0.66,0.00
     });
   ch = font->_char + '5';
-  ch->_nbCurve = 5;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 5,
     (float[]){
         1.00,1.00,1.00,1.00,0.33,1.00,0.33,1.00,
         0.33,1.00,0.33,1.00,0.00,0.67,0.00,0.67,
@@ -571,8 +555,7 @@ void TGAFontCreateDefault(TGAFont *font) {
         0.50,0.00,0.33,0.00,0.00,0.16,0.00,0.33
     });
   ch = font->_char + '6';
-  ch->_nbCurve = 6;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 6,
     (float[]){
         0.00,0.33,0.00,0.50,0.33,0.50,0.50,0.50,
         0.50,0.50,0.67,0.50,1.00,0.50,1.00,0.33,
@@ -582,15 +565,13 @@ void TGAFontCreateDefault(TGAFont *font) {
         0.50,1.00,0.50,1.00,1.00,1.00,1.00,0.67
     });
   ch = font->_char + '7';
-  ch->_nbCurve = 2;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 2,
     (float[]){
         0.00,1.00,0.00,1.00,1.00,1.00,1.00,1.00,
         1.00,1.00,1.00,1.00,0.33,0.67,0.33,0.00
     });
   ch = font->_char + '8';
-  ch->_nbCurve = 6;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 6,
     (float[]){
         0.50,1.00,1.00,1.00,1.00,0.67,0.50,0.67,
         0.50,0.67,0.33,0.67,0.00,0.50,0.00,0.33,
@@ -600,8 +581,7 @@ void TGAFontCreateDefault(TGAFont *font) {
         0.50,0.67,0.00,0.67,0.00,1.00,0.50,1.00
     });
   ch = font->_char + '9';
-  ch->_nbCurve = 5;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 5,
     (float[]){
         0.33,0.00,0.50,0.00,1.00,0.00,1.00,0.50,
         1.00,0.50,1.00,1.00,0.66,1.00,0.50,1.00,
@@ -610,29 +590,25 @@ void TGAFontCreateDefault(TGAFont *font) {
         0.50,0.50,0.67,0.50,1.00,0.50,1.00,0.67
     });
   ch = font->_char + '!';
-  ch->_nbCurve = 3;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 3,
     (float[]){
         0.50,0.18,0.44,0.18,0.44,0.07,0.50,0.07,
         0.50,0.07,0.56,0.07,0.56,0.18,0.50,0.18,
         0.50,1.00,0.50,1.00,0.50,0.33,0.50,0.33
     });
   ch = font->_char + '"';
-  ch->_nbCurve = 2;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 2,
     (float[]){
         0.66,1.00,0.66,1.00,0.66,0.75,0.66,0.75,
         0.33,1.00,0.33,1.00,0.33,0.75,0.33,0.75
     });
   ch = font->_char + '\'';
-  ch->_nbCurve = 1;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 1,
     (float[]){
         0.25,1.00,0.25,1.00,0.25,0.49,0.00,0.50
     });
   ch = font->_char + '#';
-  ch->_nbCurve = 4;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 4,
     (float[]){
         0.75,1.00,0.75,1.00,0.66,0.00,0.66,0.00,
         0.33,1.00,0.33,1.00,0.25,0.00,0.25,0.00,
@@ -640,8 +616,7 @@ void TGAFontCreateDefault(TGAFont *font) {
         0.00,0.67,0.00,0.67,1.00,0.67,1.00,0.67
     });
   ch = font->_char + '$';
-  ch->_nbCurve = 6;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 6,
     (float[]){
         0.50,1.00,0.50,1.00,0.50,0.00,0.50,0.00,
         1.00,0.83,1.00,0.99,1.00,1.00,0.50,1.00,
@@ -651,8 +626,7 @@ void TGAFontCreateDefault(TGAFont *font) {
         0.50,0.00,0.00,0.00,0.00,0.16,0.00,0.33
     });
   ch = font->_char + '%';
-  ch->_nbCurve = 9;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 9,
     (float[]){
         0.75,0.50,1.00,0.50,1.00,0.50,1.00,0.25,
         1.00,0.25,1.00,0.00,1.00,0.00,0.75,0.00,
@@ -665,8 +639,7 @@ void TGAFontCreateDefault(TGAFont *font) {
         0.00,0.00,0.00,0.00,1.00,1.00,1.00,1.00
     });
   ch = font->_char + '&';
-  ch->_nbCurve = 6;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 6,
     (float[]){
         1.00,0.00,1.00,0.33,0.76,0.67,0.50,0.67,
         0.50,0.67,0.00,0.66,0.00,1.00,0.50,1.00,
@@ -676,81 +649,69 @@ void TGAFontCreateDefault(TGAFont *font) {
         0.50,0.00,0.66,0.00,1.00,0.17,1.00,0.50
     });
   ch = font->_char + '(';
-  ch->_nbCurve = 1;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 1,
     (float[]){
         1.00,1.00,0.75,0.75,0.75,0.25,1.00,0.00
     });
   ch = font->_char + ')';
-  ch->_nbCurve = 1;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 1,
     (float[]){
         0.00,1.00,0.25,0.75,0.25,0.25,0.00,0.00
     });
   ch = font->_char + '=';
-  ch->_nbCurve = 2;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 2,
     (float[]){
         0.00,0.33,0.00,0.33,1.00,0.33,1.00,0.33,
         0.00,0.67,0.00,0.67,1.00,0.67,1.00,0.67
     });
   ch = font->_char + '~';
-  ch->_nbCurve = 1;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 1,
     (float[]){
         0.00,0.50,0.33,0.75,0.66,0.25,1.00,0.50
     });
   ch = font->_char + '`';
-  ch->_nbCurve = 1;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 1,
     (float[]){
         0.75,1.00,0.75,1.00,0.75,0.49,1.00,0.50
     });
   ch = font->_char + '{';
-  ch->_nbCurve = 2;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 2,
     (float[]){
         1.00,1.00,0.75,1.00,1.00,0.50,0.75,0.50,
         0.75,0.50,1.00,0.50,0.76,0.00,1.00,0.00
     });
   ch = font->_char + '}';
-  ch->_nbCurve = 2;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 2,
     (float[]){
         0.00,1.00,0.25,1.00,0.00,0.50,0.25,0.50,
         0.25,0.50,-0.02,0.50,0.25,0.00,0.00,0.00
     });
   ch = font->_char + '*';
-  ch->_nbCurve = 2;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 2,
     (float[]){
         0.00,0.00,0.00,0.00,1.00,1.00,1.00,1.00,
         0.00,1.00,0.00,1.00,1.00,0.00,1.00,0.00
     });
   ch = font->_char + '+';
-  ch->_nbCurve = 2;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 2,
     (float[]){
         0.00,0.50,0.00,0.50,1.00,0.50,1.00,0.50,
         0.50,1.00,0.50,1.00,0.50,0.00,0.50,0.00
     });
   ch = font->_char + '<';
-  ch->_nbCurve = 2;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 2,
     (float[]){
         1.00,1.00,1.00,1.00,0.00,0.50,0.00,0.50,
         0.00,0.50,0.00,0.50,1.00,0.00,1.00,0.00
     });
   ch = font->_char + '>';
-  ch->_nbCurve = 2;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 2,
     (float[]){
         0.00,1.00,0.00,1.00,1.00,0.50,1.00,0.50,
         1.00,0.50,1.00,0.50,0.00,0.00,0.00,0.00
     });
   ch = font->_char + '?';
-  ch->_nbCurve = 5;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 5,
     (float[]){
         0.00,0.67,0.00,1.00,0.34,1.00,0.50,1.00,
         0.50,1.00,0.66,1.00,1.00,1.00,1.00,0.67,
@@ -759,75 +720,64 @@ void TGAFontCreateDefault(TGAFont *font) {
         0.50,0.07,0.56,0.07,0.56,0.18,0.50,0.18
     });
   ch = font->_char + '.';
-  ch->_nbCurve = 2;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 2,
     (float[]){
         0.13,0.25,0.00,0.25,0.00,0.00,0.13,0.00,
         0.13,0.00,0.25,0.00,0.25,0.25,0.13,0.25
     });
   ch = font->_char + ',';
-  ch->_nbCurve = 1;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 1,
     (float[]){
         0.25,0.18,0.25,0.18,0.25,-0.33,0.00,-0.32
     });
   ch = font->_char + '/';
-  ch->_nbCurve = 1;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 1,
     (float[]){
         1.00,1.00,1.00,1.00,0.00,0.00,0.00,0.00
     });
   ch = font->_char + '\\';
-  ch->_nbCurve = 1;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 1,
     (float[]){
         0.00,1.00,0.00,1.00,1.00,0.00,1.00,0.00
     });
   ch = font->_char + '[';
-  ch->_nbCurve = 3;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 3,
     (float[]){
         1.00,1.00,1.00,1.00,0.75,1.00,0.75,1.00,
         0.75,1.00,0.75,1.00,0.75,0.00,0.75,0.00,
         0.75,0.00,0.75,0.00,1.00,0.00,1.00,0.00
     });
   ch = font->_char + ']';
-  ch->_nbCurve = 3;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 3,
     (float[]){
         0.00,1.00,0.00,1.00,0.25,1.00,0.25,1.00,
         0.25,1.00,0.25,1.00,0.25,0.0,0.25,0.0,
         0.25,0.0,0.25,0.0,0.00,0.0,0.00,0.0
     });
   ch = font->_char + '-';
-  ch->_nbCurve = 1;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 1,
     (float[]){
         0.00,0.50,0.00,0.50,1.00,0.50,1.00,0.50
     });
   ch = font->_char + '|';
-  ch->_nbCurve = 1;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 1,
     (float[]){
         0.50,1.00,0.50,1.00,0.50,0.00,0.50,0.00
     });
   ch = font->_char + '_';
-  ch->_nbCurve = 1;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 1,
     (float[]){
         0.00,0.00,0.00,0.00,1.00,0.00,1.00,0.00,
     });
   ch = font->_char + ';';
-  ch->_nbCurve = 3;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 3,
     (float[]){
         0.25,0.47,0.18,0.47,0.18,0.36,0.25,0.36,
         0.25,0.36,0.30,0.36,0.30,0.47,0.25,0.47,
         0.25,0.18,0.25,0.18,0.25,-0.33,0.00,-0.32,
     });
   ch = font->_char + ':';
-  ch->_nbCurve = 4;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 4,
     (float[]){
         0.50,0.72,0.44,0.72,0.44,0.61,0.50,0.61,
         0.50,0.61,0.56,0.61,0.56,0.72,0.50,0.72,
@@ -835,8 +785,7 @@ void TGAFontCreateDefault(TGAFont *font) {
         0.50,0.28,0.56,0.28,0.56,0.39,0.50,0.39
     });
   ch = font->_char + 'a';
-  ch->_nbCurve = 4;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 4,
     (float[]){
         0.66,0.67,0.25,0.67,0.00,0.66,0.00,0.33,
         0.00,0.33,0.00,0.00,0.26,0.01,0.49,0.01,
@@ -844,8 +793,7 @@ void TGAFontCreateDefault(TGAFont *font) {
         0.75,0.67,0.75,0.25,0.75,0.01,1.00,0.00
     });
   ch = font->_char + 'b';
-  ch->_nbCurve = 4;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 4,
     (float[]){
         0.00,1.00,0.00,0.50,0.00,0.00,0.50,0.00,
         0.50,0.00,1.00,0.00,1.00,0.33,1.00,0.50,
@@ -853,8 +801,7 @@ void TGAFontCreateDefault(TGAFont *font) {
         0.42,0.67,0.25,0.67,0.06,0.58,0.06,0.33
     });
   ch = font->_char + 'c';
-  ch->_nbCurve = 4;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 4,
     (float[]){
         1.00,0.50,1.00,0.67,0.67,0.67,0.50,0.67,
         0.50,0.67,0.33,0.67,0.00,0.66,0.00,0.33,
@@ -862,8 +809,7 @@ void TGAFontCreateDefault(TGAFont *font) {
         0.50,0.00,0.66,0.00,1.00,0.00,1.00,0.25
     });
   ch = font->_char + 'd';
-  ch->_nbCurve = 4;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 4,
     (float[]){
         1.00,1.00,1.01,0.50,1.00,0.00,0.50,0.00,
         0.50,0.00,0.00,0.00,0.00,0.33,0.00,0.50,
@@ -871,8 +817,7 @@ void TGAFontCreateDefault(TGAFont *font) {
         0.59,0.66,0.75,0.66,0.95,0.59,0.95,0.34
     });
   ch = font->_char + 'e';
-  ch->_nbCurve = 6;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 6,
     (float[]){
         1.00,0.25,1.00,0.00,0.66,0.00,0.50,0.00,
         0.50,0.00,0.34,0.00,0.00,0.00,0.00,0.33,
@@ -882,8 +827,7 @@ void TGAFontCreateDefault(TGAFont *font) {
         0.50,0.33,0.33,0.33,0.00,0.33,0.00,0.33
     });
   ch = font->_char + 'f';
-  ch->_nbCurve = 4;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 4,
     (float[]){
         0.00,0.50,0.00,0.50,0.66,0.50,0.66,0.50,
         1.00,0.75,1.00,1.00,0.75,1.00,0.50,1.00,
@@ -891,8 +835,7 @@ void TGAFontCreateDefault(TGAFont *font) {
         0.25,0.67,0.25,0.50,0.25,0.00,0.25,0.00
     });
   ch = font->_char + 'g';
-  ch->_nbCurve = 6;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 6,
     (float[]){
         1.00,0.33,1.00,0.00,0.67,0.00,0.50,0.00,
         0.50,0.00,0.33,0.00,0.00,-0.01,0.00,0.33,
@@ -902,16 +845,14 @@ void TGAFontCreateDefault(TGAFont *font) {
         0.50,-0.33,0.41,-0.33,0.33,-0.33,0.33,-0.33
     });
   ch = font->_char + 'h';
-  ch->_nbCurve = 3;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 3,
     (float[]){
         0.00,0.33,0.25,0.67,1.00,1.00,1.00,0.50,
         1.00,0.50,1.00,0.25,1.00,0.00,1.00,0.00,
         0.00,1.00,0.00,1.00,0.00,0.00,0.00,0.00
     });
   ch = font->_char + 'i';
-  ch->_nbCurve = 5;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 5,
     (float[]){
         0.25,0.87,0.19,0.87,0.19,0.76,0.25,0.76,
         0.25,0.76,0.31,0.76,0.31,0.87,0.25,0.87,
@@ -920,8 +861,7 @@ void TGAFontCreateDefault(TGAFont *font) {
         0.50,0.00,0.72,0.00,1.00,0.00,1.00,0.00
     });
   ch = font->_char + 'j';
-  ch->_nbCurve = 5;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 5,
     (float[]){
         0.75,0.87,0.69,0.87,0.69,0.76,0.75,0.76,
         0.75,0.76,0.81,0.76,0.81,0.87,0.76,0.87,
@@ -930,8 +870,7 @@ void TGAFontCreateDefault(TGAFont *font) {
         0.75,0.50,0.75,0.33,0.76,0.00,1.00,0.00
     });
   ch = font->_char + 'k';
-  ch->_nbCurve = 4;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 4,
     (float[]){
         0.00,0.50,0.25,0.67,1.00,0.75,1.00,0.50,
         1.00,0.50,1.00,0.25,0.50,0.33,0.00,0.33,
@@ -939,8 +878,7 @@ void TGAFontCreateDefault(TGAFont *font) {
         0.00,1.00,0.00,1.00,0.00,0.00,0.00,0.00
     });
   ch = font->_char + 'l';
-  ch->_nbCurve = 6;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 6,
     (float[]){
         0.00,0.00,0.25,0.00,0.25,0.34,0.25,0.50,
         0.25,0.50,0.25,0.66,0.25,1.00,0.50,1.00,
@@ -950,8 +888,7 @@ void TGAFontCreateDefault(TGAFont *font) {
         0.66,0.00,0.76,0.00,1.00,0.00,1.00,0.00
     });
   ch = font->_char + 'm';
-  ch->_nbCurve = 5;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 5,
     (float[]){
         0.00,0.67,0.00,0.67,0.00,0.00,0.00,0.00,
         0.00,0.25,0.00,0.59,0.25,0.67,0.33,0.67,
@@ -960,16 +897,14 @@ void TGAFontCreateDefault(TGAFont *font) {
         0.74,0.67,1.00,0.67,1.00,0.00,1.00,0.00
     });
   ch = font->_char + 'n';
-  ch->_nbCurve = 3;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 3,
     (float[]){
         0.00,0.67,0.00,0.67,0.00,0.00,0.00,0.00,
         0.00,0.25,0.00,0.50,0.25,0.67,0.66,0.67,
         0.66,0.67,1.00,0.67,1.00,0.24,1.00,0.00
     });
   ch = font->_char + 'o';
-  ch->_nbCurve = 4;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 4,
     (float[]){
         0.50,0.67,1.00,0.67,1.00,0.66,1.00,0.33,
         1.00,0.33,1.00,0.00,1.00,0.00,0.50,0.00,
@@ -977,8 +912,7 @@ void TGAFontCreateDefault(TGAFont *font) {
         0.00,0.33,0.00,0.67,0.00,0.67,0.50,0.67
     });
   ch = font->_char + 'p';
-  ch->_nbCurve = 5;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 5,
     (float[]){
         0.00,-0.33,0.00,-0.33,0.00,0.16,0.00,0.33,
         0.00,0.33,0.00,0.50,0.00,0.67,0.50,0.67,
@@ -987,8 +921,7 @@ void TGAFontCreateDefault(TGAFont *font) {
         0.50,0.00,0.00,0.00,0.00,0.00,0.00,0.00
     });
   ch = font->_char + 'q';
-  ch->_nbCurve = 5;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 5,
     (float[]){
         1.00,0.00,1.00,0.00,0.75,0.00,0.50,0.00,
         0.50,0.00,0.25,0.00,0.00,-0.01,0.00,0.33,
@@ -997,15 +930,13 @@ void TGAFontCreateDefault(TGAFont *font) {
         1.00,0.33,1.00,0.00,1.00,-0.33,1.00,-0.33
     });
   ch = font->_char + 'r';
-  ch->_nbCurve = 2;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 2, 
     (float[]){
         0.00,0.67,0.00,0.67,0.00,0.00,0.00,0.00,
         0.00,0.33,0.25,0.67,1.00,1.00,1.00,0.50
     });
   ch = font->_char + 's';
-  ch->_nbCurve = 5;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 5,
     (float[]){
         1.00,0.50,1.00,0.66,1.00,0.67,0.50,0.67,
         0.50,0.67,0.00,0.67,0.00,0.66,0.00,0.50,
@@ -1014,8 +945,7 @@ void TGAFontCreateDefault(TGAFont *font) {
         0.50,0.00,0.00,0.00,0.00,0.08,0.00,0.25
     });
   ch = font->_char + 't';
-  ch->_nbCurve = 4;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 4,
     (float[]){
         0.00,0.00,0.25,0.00,0.25,0.17,0.25,0.25,
         0.00,0.67,0.00,0.67,0.50,0.67,0.50,0.67,
@@ -1023,23 +953,20 @@ void TGAFontCreateDefault(TGAFont *font) {
         0.25,0.25,0.25,0.01,0.50,0.00,1.00,0.00
     });
   ch = font->_char + 'u';
-  ch->_nbCurve = 3;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 3,
     (float[]){
         0.00,0.67,0.00,0.33,0.00,0.00,0.50,0.00,
         0.50,0.00,1.00,0.00,1.00,0.33,1.00,0.67,
         1.00,0.67,1.00,0.33,1.00,0.00,1.00,0.00
     });
   ch = font->_char + 'v';
-  ch->_nbCurve = 2;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 2,
     (float[]){
         0.00,0.67,0.00,0.67,0.34,0.00,0.50,0.00,
         0.50,0.00,0.66,0.00,1.00,0.67,1.00,0.67
     });
   ch = font->_char + 'w';
-  ch->_nbCurve = 4;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 4,
     (float[]){
         0.00,0.67,0.00,0.67,0.16,0.00,0.33,0.00,
         0.33,0.00,0.50,0.00,0.50,0.50,0.50,0.50,
@@ -1047,8 +974,7 @@ void TGAFontCreateDefault(TGAFont *font) {
         0.66,0.00,0.82,0.00,1.00,0.67,1.00,0.67
     });
   ch = font->_char + 'x';
-  ch->_nbCurve = 4;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 4,
     (float[]){
         0.00,0.00,0.25,0.00,0.51,0.24,0.50,0.33,
         0.50,0.33,0.50,0.41,0.76,0.67,1.00,0.67,
@@ -1056,24 +982,21 @@ void TGAFontCreateDefault(TGAFont *font) {
         0.50,0.33,0.50,0.25,0.75,0.00,1.00,0.00
     });
   ch = font->_char + 'y';
-  ch->_nbCurve = 3;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 3,
     (float[]){
         0.00,0.67,0.00,0.67,0.00,0.00,0.66,0.00,
         1.00,0.67,1.00,0.67,0.82,0.33,0.66,0.00,
         0.66,0.00,0.50,-0.33,0.50,-0.33,0.25,-0.33
     });
   ch = font->_char + 'z';
-  ch->_nbCurve = 3;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 3,
     (float[]){
         0.00,0.67,0.00,0.67,1.00,0.67,1.00,0.67,
         1.00,0.67,1.00,0.50,0.00,0.25,0.00,0.00,
         0.00,0.00,0.00,0.00,1.00,0.00,1.00,0.00
     });
   ch = font->_char + '@';
-  ch->_nbCurve = 8;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 8,
     (float[]){
         0.61,0.66,0.36,0.66,0.21,0.65,0.21,0.45,
         0.21,0.45,0.21,0.25,0.36,0.25,0.51,0.25,
@@ -1085,8 +1008,7 @@ void TGAFontCreateDefault(TGAFont *font) {
         0.25,0.11,0.45,0.01,0.67,0.07,0.75,0.13
     });
   ch = font->_char + '^';
-  ch->_nbCurve = 2;
-  TGAFontInitChar(ch, 
+  TGAFontInitChar(ch, 2,
     (float[]){
         0.00,0.75,0.00,0.75,0.50,1.00,0.50,1.00,
         0.50,1.00,0.50,1.00,1.00,0.75,1.00,0.75

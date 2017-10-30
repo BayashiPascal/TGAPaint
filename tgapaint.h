@@ -19,6 +19,14 @@
 // Maximum number of curves in the definition of a font's character
 #define TGA_NBMAXCURVECHAR 10
 
+// ================= Generic functions ==================
+
+void TGATypeUnsupported(void*t, ...); 
+#define TGADrawCurve(T,C,P) _Generic((C), \
+  BCurve*: TGADrawBCurve, \
+  SCurve*: TGADrawSCurve, \
+  default: TGATypeUnsupported)(T,C,P)
+
 // ================= Data structure ===================
 
 // Header of a TGA file
@@ -106,13 +114,8 @@ typedef struct TGAPencil {
 
 // One character in a TGAFont
 typedef struct TGAChar {
-  // Number of curve defining this character
-  int _nbCurve;
-  // Definition of the curves 
-  // (1st anchor(x,y), 1st ctrl point(x,y), 
-  // 2nd ctrl point(x,y), 2nd anchor(x,y))
-  // in pixels
-  BCurve *_curves[TGA_NBMAXCURVECHAR];
+  // SCurve defining this character
+  SCurve *_curve;
 } TGAChar;
 
 // Enumeration of available fonts
@@ -212,7 +215,11 @@ void TGADrawLine(TGA *tga, VecFloat *from, VecFloat *to, TGAPencil *pen);
   
 // Draw the BCurve 'curve' (must be of dimension 2 and order > 0)
 // do nothing if arguments are invalid
-void TGADrawCurve(TGA *tga, BCurve *curve, TGAPencil *pen);
+void TGADrawBCurve(TGA *tga, BCurve *curve, TGAPencil *pen);
+  
+// Draw the SCurve 'curve' (must be of dimension 2)
+// do nothing if arguments are invalid
+void TGADrawSCurve(TGA *tga, SCurve *curve, TGAPencil *pen);
   
 // Draw a rectangle between 'from' and 'to' with pencil 'pen'
 // pixels outside the TGA are ignored
