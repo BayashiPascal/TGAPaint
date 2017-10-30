@@ -540,7 +540,7 @@ void TGAStrokePixShapoid(TGA *tga, VecFloat *pos, TGAPencil *pen) {
             for(int i = 2; i--;)
               VecSet(pixel->_pos, i, floor(VecGet(p, i)));
             // Get the ratio coverage of this pixel by the pen tip
-            float ratio = ShapoidGetCoverageRatio(penTip, pixel);
+            float ratio = ShapoidGetCoverage(penTip, pixel);
             // Get a pointer to the current pixel
             TGAPixel *curPix = TGAGetPix(tga, q);
             // If the pointer is not null
@@ -611,8 +611,6 @@ void TGADrawBCurve(TGA *tga, BCurve *curve, TGAPencil *pen) {
   // Declare a variable to memorize the step of the parameter of 
   // the BCurve
   float dt = 0.5 / l;
-  // Ensure the step is no greater than 0.5 to avoid jump over pixel
-  if (dt > 0.5) dt = 0.5;
   // Declare the parameter of the curve
   float t = 0.0;
   // Declare a variable to memorize the position on the curve
@@ -634,10 +632,7 @@ void TGADrawBCurve(TGA *tga, BCurve *curve, TGAPencil *pen) {
     pos = BCurveGet(curve, t);
     // If the current position is not on the same pixel as previously
     // stroke
-    if ((short)floor(VecGet(pos, 0)) !=   
-      (short)floor(VecGet(prevPos, 0)) || 
-      (short)floor(VecGet(pos, 1)) != 
-      (short)floor(VecGet(prevPos, 1))) {
+    if (VecDist(prevPos, pos) >= 0.5) {
       // Set the blend value of the pencil to calculate the pencil 
       // current color
       TGAPencilSetBlend(pen, t);
@@ -650,10 +645,7 @@ void TGADrawBCurve(TGA *tga, BCurve *curve, TGAPencil *pen) {
     t += dt;
   }
   // If the last pixel hasn't been stroke
-  if ((short)floor(VecGet(curve->_ctrl[curve->_order], 0)) != 
-    (short)floor(VecGet(prevPos, 0)) || 
-    (short)floor(VecGet(curve->_ctrl[curve->_order], 1)) != 
-    (short)floor(VecGet(prevPos, 1)))
+  if (VecHamiltonDist(prevPos, curve->_ctrl[curve->_order]) >= 0.5)
     // Stroke the last pixel
     TGAStrokePix(tga, curve->_ctrl[curve->_order], pen);  
   // Free memory
