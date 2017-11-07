@@ -294,7 +294,7 @@ Shapoid* TGAFontGetStringBound(TGAFont *font, unsigned char *s) {
 void TGAFontInitChar(TGAChar *ch, int nbCurve, float *c) {
   BCurve *curve = BCurveCreate(3, 2);
   if (curve != NULL) {
-    for (int iCurve = nbCurve; iCurve--;) {
+    for (int iCurve = 0; iCurve < nbCurve; ++iCurve) {
       for (int iCtrl = 4; iCtrl--;)
         for (int dim = 2; dim--;)
           VecSet(curve->_ctrl[iCtrl], dim, 

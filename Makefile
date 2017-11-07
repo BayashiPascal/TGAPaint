@@ -4,15 +4,21 @@ OPTIONS=$(OPTIONS_RELEASE)
 INCPATH=/home/bayashi/Coding/Include
 LIBPATH=/home/bayashi/Coding/Include
 
-all : main
+all : main testCurve
 
 main: main.o tgapaint.o Makefile $(LIBPATH)/bcurve.o $(LIBPATH)/pbmath.o $(LIBPATH)/gset.o
 	gcc $(OPTIONS) main.o tgapaint.o  $(LIBPATH)/pbmath.o $(LIBPATH)/bcurve.o $(LIBPATH)/gset.o -o main -lm
 
+testCurve: testCurve.o tgapaint.o Makefile $(LIBPATH)/bcurve.o $(LIBPATH)/pbmath.o $(LIBPATH)/gset.o
+	gcc $(OPTIONS) testCurve.o tgapaint.o  $(LIBPATH)/pbmath.o $(LIBPATH)/bcurve.o $(LIBPATH)/gset.o -o testCurve -lm
+
 main.o : main.c tgapaint.h Makefile
 	gcc $(OPTIONS) -I$(INCPATH) -c main.c
 
-tgapaint.o : tgapaint.c tgafont.c tgapaint.h $(INCPATH)/bcurve.h $(INCPATH)/gset.h Makefile
+testCurve.o : testCurve.c tgapaint.h Makefile
+	gcc $(OPTIONS) -I$(INCPATH) -c testCurve.c
+
+tgapaint.o : tgapaint.c tgafont.c tgabrush.c tgapaint.h $(INCPATH)/bcurve.h $(INCPATH)/gset.h Makefile
 	gcc $(OPTIONS) -I$(INCPATH) -c tgapaint.c
 
 clean : 

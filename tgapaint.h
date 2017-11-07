@@ -65,12 +65,26 @@ typedef struct TGAPixel {
   bool _readOnly;
 } TGAPixel;
 
+// One layer of pixels in the TGA
+typedef struct TGALayer {
+  // Dimension of the layer
+  VecShort *_dim;
+  // Pixels (stored by rows)
+  TGAPixel *_pixels;
+} TGALayer;
+
 // Main TGA structure
 typedef struct TGA {
   // Header
   TGAHeader *_header;
-  // Pixels (stored by rows)
-  TGAPixel *_pixels;
+  // Set of layers (first one is the deepest)
+  GSet *_layers;
+  // Current layer
+  TGALayer *_curLayer;
+  // Current layer index
+  int _curLayerIndex;
+  // Temporary working layer
+  TGALayer *_tmpLayer;
 } TGA;
 
 // Enumeration of TGAPencil's color modes
@@ -158,6 +172,7 @@ typedef struct TGAFont {
 
 // Create a TGA of width dim[0] and height dim[1] and background
 // color equal to pixel
+// If 'pixel' is NULL rgba(0,0,0,0) is used
 // (0,0) is the bottom left corner, x toward right, y toward top
 // Return NULL in case of invalid arguments or memory allocation
 // failure
@@ -197,15 +212,18 @@ void TGAPrintHeader(TGA *tga, FILE *stream);
 bool TGAIsPosInside(TGA *tga, VecShort *pos);
 
 // Get a pointer to the pixel at coord (x,y) = (pos[0],pos[1])
+// in the current layer
 // Return NULL in case of invalid arguments
 TGAPixel* TGAGetPix(TGA *tga, VecShort *pos);
 
 // Set the color of one pixel at coord (x,y) = (pos[0],pos[1]) to 'pix'
+// in the current layer
 // Do nothing in case of invalid arguments
 void TGASetPix(TGA *tga, VecShort *pos, TGAPixel *pix);
 
 // Draw one stroke at 'pos' with 'pen'
-// Don't do anything in case of invalid arguments
+// in current layer
+// Do nothing in case of invalid arguments
 void TGAStrokePix(TGA *tga, VecFloat *pos, TGAPencil *pen);
 
 // Draw a line between 'from' and 'to' with pencil 'pen'
@@ -278,12 +296,17 @@ TGAPixel* TGAGetBlackPixel(void);
 TGAPixel* TGAGetTransparentPixel(void);
 
 // Free the memory used by tgapixel
-void TGAFreePixel(TGAPixel **pixel);
+void TGAPixelFree(TGAPixel **pixel);
 
 // Return a new TGAPixel which is a blend of 'pixA' and 'pixB' 
 // newPix = (1 - blend) * pixA + blend * pixB
 // Return NULL if arguments are invalid
-TGAPixel* TGABlendPixel(TGAPixel *pixA, TGAPixel *pixB, float blend);
+TGAPixel* TGAPixelBlend(TGAPixel *pixA, TGAPixel *pixB, float blend);
+
+// Return a new TGAPixel which is the addition of 'ratio' 
+// (in [0.0,1.0]) * 'pixB' to 'pixA' 
+// Return NULL if arguments are invalid
+TGAPixel* TGAPixelMix(TGAPixel *pixA, TGAPixel *pixB, float ratio);
 
 // Create a default TGAPencil with all color set to transparent
 // solid mode, thickness = 1.0, tip as facoid, no antialias
@@ -291,7 +314,7 @@ TGAPixel* TGABlendPixel(TGAPixel *pixA, TGAPixel *pixB, float blend);
 TGAPencil* TGAGetPencil(void);
 
 // Free the memory used by the TGAPencil 'pen'
-void TGAFreePencil(TGAPencil **pen);
+void TGAPencilFree(TGAPencil **pen);
 
 // Clone the TGAPencil 'pen'
 // Return NULL if it couldn't clone
@@ -427,5 +450,59 @@ void TGAPixelSetAllReadOnly(TGA *tga, bool v);
 // Get the read only flag of a TGAPixel
 // Return true if arguments are invalid
 bool TGAPixelIsReadOnly(TGAPixel *pix);
+
+// Create a TGALayer of width dim[0] and height dim[1] and background
+// color equal to 'pixel'
+// If 'pixel' is NULL rgba(0,0,0,0) is used
+// Return NULL in case of invalid arguments or memory allocation
+// failure
+TGALayer* TGALayerCreate(VecShort *dim, TGAPixel *pixel);
+
+// Clone a TGALayer
+// Return NULL in case of failure
+TGALayer* TGALayerClone(TGALayer *that);
+
+// Free the memory used by the TGALayer
+void TGALayerFree(TGALayer **that);
+
+// Set the current layer to the 'iLayer'-th layer
+// Do nothing if arguments are invalid
+void TGASetCurLayer(TGA *that, int iLayer);
+
+// Add a layer above the current one
+// Do nothing if the arguments are invalid
+void TGAAddLayer(TGA *that);
+
+// Blend layers 'that' and 'tho', the result is stored into 'that'
+// 'tho' is considered to above 'that'
+// If VecShort 'bound' is not null only pixels inside the box
+// (bound[0],bound[1])-(bound[2],bound[3]) (included) are blended
+// 'that' and 'tho' must have same dimension
+// Do nothing if arguments are invalid
+void TGALayerBlend(TGALayer *that, TGALayer *tho, VecShort *bound);
+
+// Get a pointer to the pixel at coord (x,y) = (pos[0],pos[1]) 
+// in the layer 'that'
+// Return NULL in case of invalid arguments
+TGAPixel* TGALayerGetPix(TGALayer *that, VecShort *pos);
+
+// Set the color of one pixel at coord (x,y) = (pos[0],pos[1]) to 'pix'
+// in the layer 'that'
+// Do nothing in case of invalid arguments
+void TGALayerSetPix(TGALayer *that, VecShort *pos, TGAPixel *pix);
+
+// Draw one stroke at 'pos' with 'pen'
+// in layer 'that'
+// Do nothing in case of invalid arguments
+void TGALayerStrokePix(TGALayer *that, VecFloat *pos, TGAPencil *pen);
+
+// Return true if 'pos' is inside 'that'
+// Return false else, or if arguments are invalid
+bool TGALayerIsPosInside(TGALayer *that, VecShort *pos);
+
+// Erase the content of the layer 'that' 
+// (set all pixel to rgba(0,0,0,0) and readonly to false)
+// Do nothing in case of invalid argument
+void TGALayerClean(TGALayer *that); 
 
 #endif

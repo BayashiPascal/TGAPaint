@@ -15,6 +15,7 @@ int main(void) {
     return 1;
   }
   // Set the color of some pixels
+  printf("Set the color of some pixels\n");
   VecShort *pos = VecShortCreate(2);
   if (pos == NULL) {
     fprintf(stderr, "VecShortCreate failed\n");
@@ -32,6 +33,7 @@ int main(void) {
   VecSet(pos, 0, 30); VecSet(pos, 1, 75);
   TGASetPix(theTGA, pos, pix);
   // Draw some lines
+  printf("Draw some lines\n");
   TGAPencil *pen = TGAGetBlackPencil();
   pix->_rgba[0] = 0; pix->_rgba[1] = 0; pix->_rgba[2] = 0;
   TGAPencilSetColor(pen, pix);
@@ -65,20 +67,24 @@ int main(void) {
   VecSet(to, 0, -10.5); VecSet(to, 1, 50.5);
   TGADrawLine(theTGA, from, to, pen);
   // Apply gaussian blur
+  printf("Apply Gaussian blur\n");
   TGAFilterGaussBlur(theTGA, 0.5, 2.0);
   // Draw a rectangle
+  printf("Draw a rectangle\n");
   pix->_rgba[0] = 0; pix->_rgba[1] = 255; pix->_rgba[2] = 255;
   TGAPencilSetColor(pen, pix);
   VecSet(from, 0, 70.5); VecSet(from, 1, 40.5); 
   VecSet(to, 0, 100.5); VecSet(to, 1, 10.5);
   TGADrawRect(theTGA, from, to, pen);
   // Draw a filled rectangle
+  printf("Draw a filled rectangle\n");
   pix->_rgba[0] = 255; pix->_rgba[1] = 255; pix->_rgba[2] = 0;
   TGAPencilSetColor(pen, pix);
   VecSet(from, 0, 75.5); VecSet(from, 1, 35.5); 
   VecSet(to, 0, 95.5); VecSet(to, 1, 15.5);
   TGAFillRect(theTGA, from, to, pen);
   // Draw an ellipse
+  printf("Draw an ellipse\n");
   pix->_rgba[0] = 128; pix->_rgba[1] = 128; pix->_rgba[2] = 128;
   TGAPencilSetColor(pen, pix);
   VecFloat *center = VecFloatCreate(2); 
@@ -87,12 +93,14 @@ int main(void) {
   VecSet(radius, 0, 15.5); VecSet(radius, 1, 20.5);
   TGADrawEllipse(theTGA, center, radius, pen);
   // Draw a filled ellipse
+  printf("Draw a filled ellipse\n");
   pix->_rgba[0] = 200; pix->_rgba[1] = 200; pix->_rgba[2] = 200;
   TGAPencilSetColor(pen, pix);
   VecSet(center, 0, 60.5); VecSet(center, 1, 75.5);
   VecSet(radius, 0, 25.5); VecSet(radius, 1, 10.5);
   TGAFillEllipse(theTGA, center, radius, pen);
   // Draw a line using blend colors
+  printf("Draw a line using blend color\n");
   VecSet(from, 0, 30.5); VecSet(from, 1, 25.5); 
   VecSet(to, 0, 90.5); VecSet(to, 1, 75.5);
   pix->_rgba[0] = pix->_rgba[3] = 255;
@@ -105,6 +113,7 @@ int main(void) {
   TGAPencilSetModeColorBlend(pen, 0, 1);
   TGADrawLine(theTGA, from, to, pen);
   // Draw a curve
+  printf("Draw a curve\n");
   VecFloat *ctrlFrom = VecFloatCreate(2); 
   VecSet(ctrlFrom, 0, 40.5); VecSet(ctrlFrom, 1, 0.5);
   VecFloat *ctrlTo = VecFloatCreate(2); 
@@ -119,12 +128,14 @@ int main(void) {
   BCurveSet(curve, 2, ctrlTo);
   BCurveSet(curve, 3, to);
   TGAPencilSetShapeRound(pen);
+  //TGAPencilSetShapePixel(pen);
   TGAPencilSetAntialias(pen, true);
   TGAPencilSetModeColorSolid(pen);
   TGAPencilSetThickness(pen, 5.0);
   TGADrawCurve(theTGA, curve, pen);
   BCurveFree(&curve);
   // Print some strings
+  printf("Print some strings\n");
   TGAPencilSetThickness(pen, 1.0);
   pix->_rgba[0] = pix->_rgba[1] = pix->_rgba[2] = 0;
   TGAPencilSetColor(pen, pix);
@@ -152,7 +163,8 @@ int main(void) {
   VecSet(from, 0, 5.0); VecSet(from, 1, 152.0);
   TGAPrintString(theTGA, pen, font, 
     (unsigned char *)"!\"#$%&'()=\n~`{}*+<>?,\n./\\[]-|_;:", from);
-  // Draw some Shapoid
+  // Draw some Shapoids
+  printf("Draw some Shapoids\n");
   Shapoid *shapoid = FacoidCreate(2);
   if (shapoid == NULL) {
     fprintf(stderr, "Can't create the shapoid\n");
@@ -176,6 +188,7 @@ int main(void) {
   ShapoidRotate2D(shapoid, 0.5);
   TGADrawShapoid(theTGA, shapoid, pen);
   // Draw some filled shapoid with depth gradation
+  printf("Draw some shapoid with depth gradation\n");
   TGAPencilSetModeColorBlend(pen, 0, 1);
   TGAPencilSetShapePixel(pen);
   pix->_rgba[3] = 255;
@@ -228,7 +241,7 @@ int main(void) {
   VecFree(&to);
   TGAFreeFont(&font);
   TGAFree(&theTGA);
-  TGAFreePixel(&pix);
-  TGAFreePencil(&pen);
+  TGAPixelFree(&pix);
+  TGAPencilFree(&pen);
   return 0;
 }

@@ -17,23 +17,43 @@
 void MergeBytes(TGAPixel *pixel, unsigned char *p, int bytes);
 
 // Draw one stroke at 'pos' with 'pen' of type tgaPenShapoid
+// in current layer
 // Don't do anything in case of invalid arguments
 void TGAStrokePixShapoid(TGA *tga, VecFloat *pos, TGAPencil *pen);
 
 // Draw one stroke at 'pos' with 'pen' of type tgaPenPixel
+// in current layer
 // Don't do anything in case of invalid arguments
 void TGAStrokePixOnePixel(TGA *tga, VecFloat *pos, TGAPencil *pen);
+
+// Draw one stroke at 'pos' with 'pen' of type tgaPenShapoid
+// in layer 'that'
+// Don't do anything in case of invalid arguments
+void TGALayerStrokePixShapoid(TGALayer *that, 
+  VecFloat *pos, TGAPencil *pen);
+
+// Draw one stroke at 'pos' with 'pen' of type tgaPenPixel
+// in layer 'that'
+// Don't do anything in case of invalid arguments
+void TGALayerStrokePixOnePixel(TGALayer *that, 
+  VecFloat *pos, TGAPencil *pen);
+
+// Add the BCurve 'curve' (must be of dimension 2 and order > 0)
+// in 'layer'
+// do nothing if arguments are invalid
+void TGALayerAddCurve(TGALayer *layer, BCurve *curve, TGAPencil *pen);
 
 // ================ Functions implementation ==================
 
 // Create a TGA of width dim[0] and height dim[1] and background
 // color equal to pixel
+// If 'pixel' is NULL rgba(0,0,0,0) is used
 // (0,0) is the bottom left corner, x toward right, y toward top
 // Return NULL in case of invalid arguments or memory allocation
 // failure
 TGA* TGACreate(VecShort *dim, TGAPixel *pixel) {
   // Check arguments
-  if (dim == NULL || pixel == NULL) return NULL;
+  if (dim == NULL) return NULL;
   // Allocate memory
   TGA *ret = (TGA*)malloc(sizeof(TGA));
   // If we couldn't allocate memory
@@ -42,8 +62,9 @@ TGA* TGACreate(VecShort *dim, TGAPixel *pixel) {
     return NULL;
   // Set the pointers to NULL
   ret->_header = NULL;
-  ret->_pixels = NULL;
-  // Allcoate memory for the header
+  ret->_layers = NULL;
+  ret->_curLayer = NULL;
+  // Allocate memory for the header
   ret->_header = (TGAHeader*)malloc(sizeof(TGAHeader));
   // If we couldn't allocate memory
   if (ret->_header == NULL) {
@@ -67,28 +88,34 @@ TGA* TGACreate(VecShort *dim, TGAPixel *pixel) {
   h->_height = VecGet(dim, 1);
   h->_bitsPerPixel = 32;
   h->_imageDescriptor = 0;
-  // Allocate memory for the pixels
-  ret->_pixels = 
-    (TGAPixel*)malloc(h->_width * h->_height * sizeof(TGAPixel));
-  // If we couldn't allocate memory
-  if (ret->_pixels == NULL) {
-    // Free hte memory for the TGA and its header
+  // Create the set of layers
+  ret->_layers = GSetCreate();
+  if (ret->_layers == NULL) {
+    // Free the memory for the TGA
     free(ret->_header);
     free(ret);
     // Return NULL
     return NULL;
   }
-  // Set a pointer to the pixels
-  TGAPixel *p = ret->_pixels;
-  // For each pixel
-  for (int i = 0; i < h->_width * h->_height; ++i) {
-    // For each value RGBA
-    for (int irgb = 0; irgb < 4; ++irgb)
-      // Initialize the value
-      p[i]._rgba[irgb] = pixel->_rgba[irgb];
-    // Initialize in read-write
-    p[i]._readOnly = false;
+  // Create one layer
+  ret->_curLayer = TGALayerCreate(dim, pixel);
+  // Create the temporary working layer
+  ret->_tmpLayer = TGALayerCreate(dim, pixel);
+  // If we couldn't allocate memory
+  if (ret->_curLayer == NULL || ret->_tmpLayer == NULL) {
+    // Free the memory for the TGA
+    TGALayerFree(&(ret->_tmpLayer));
+    TGALayerFree(&(ret->_curLayer));
+    GSetFree(&(ret->_layers));
+    free(ret->_header);
+    free(ret);
+    // Return NULL
+    return NULL;
   }
+  // Add the layer to the set
+  GSetPush(ret->_layers, ret->_curLayer);
+  // Initialize the current layer index
+  ret->_curLayerIndex = 0;
   // Return the created TGA
   return ret;
 }
@@ -114,22 +141,17 @@ TGA* TGAClone(TGA *tga) {
     }
     // Copy the header
     memcpy(ret->_header, tga->_header, sizeof(TGAHeader));
-    // Allocate memory for the pixels
-    ret->_pixels = 
-      (TGAPixel*)malloc(ret->_header->_width * 
-      ret->_header->_height * sizeof(TGAPixel));
-    // If we couldn't allocate memory
-    if (ret->_pixels == NULL) {
-      // Free the memory for the header
-      free(ret->_header);
-      // Free memory for the cloned TGA
-      free(ret);
-      // Return NULL
-      return NULL;
+    // Clone the layers
+    GSetElem *elem = tga->_layers->_head;
+    while (elem != NULL) {
+      TGALayer *layer = TGALayerClone((TGALayer*)(elem->_data));
+      if (layer == NULL) {
+        TGAFree(&ret);
+        return NULL;
+      }
+      GSetAppend(ret->_layers, layer);
+      elem = elem->_next;
     }
-    // Copy the pixels
-    memcpy(ret->_pixels, tga->_pixels, 
-      ret->_header->_width * ret->_header->_height * sizeof(TGAPixel));
   }
   // Return the cloned TGA
   return ret;
@@ -146,8 +168,15 @@ void TGAFree(TGA **tga) {
     free((*tga)->_header);
     (*tga)->_header = NULL;
   }
-  // Free the pixels
-  TGAFreePixel(&((*tga)->_pixels));
+  // Free the layers
+  TGALayerFree(&((*tga)->_tmpLayer));
+  (*tga)->_curLayer = NULL;
+  TGALayer *layer = (TGALayer*)GSetPop((*tga)->_layers);
+  while (layer != NULL) {
+    TGALayerFree(&layer);
+    layer = (TGALayer*)GSetPop((*tga)->_layers);
+  }
+  GSetFree(&((*tga)->_layers));
   // Free the TGA
   free(*tga);
   *tga = NULL;
@@ -170,6 +199,13 @@ int TGALoad(TGA **tga, char *fileName) {
   if (*tga != NULL)
     // Free memory
     TGAFree(tga);
+  // Create a VecShort to memorize the dimensions
+  VecShort *dim = VecShortCreate(2);
+  // If we couldn't allocate memory
+  if (dim == NULL) {
+    // Stop here
+    return 2;
+  }
   // Allocate memory for the TGA
   *tga = (TGA*)malloc(sizeof(TGA));
   // If we couldn't allocate memory
@@ -180,7 +216,9 @@ int TGALoad(TGA **tga, char *fileName) {
   }
   // Set pointers to NULL
   (*tga)->_header = NULL;
-  (*tga)->_pixels = NULL;
+  (*tga)->_layers = NULL;
+  (*tga)->_curLayer = NULL;
+  (*tga)->_tmpLayer = NULL;
   // Declare variables used during decoding
   int n = 0, i = 0, j = 0;
   unsigned int bytes2read = 0, skipover = 0;
@@ -218,18 +256,30 @@ int TGALoad(TGA **tga, char *fileName) {
   ret = fread(&(h->_height), 2, 1, fptr);
   h->_bitsPerPixel = fgetc(fptr);
   h->_imageDescriptor = fgetc(fptr);
-  // Allocate memory for the pixels
-  (*tga)->_pixels = 
-    (TGAPixel*)malloc(h->_width * h->_height * sizeof(TGAPixel));
-  // If we couldn't allocate memory
-  if ((*tga)->_pixels == NULL) {
-    // Stop here
-    TGAFree(tga);
-    fclose(fptr);
+  // Create the set of layers
+  (*tga)->_layers = GSetCreate();
+  if ((*tga)->_layers == NULL) {
+    // Free the memory for the TGA
+    free((*tga)->_header);
+    free((*tga));
     return 2;
   }
+  // Create one layer
+  VecSet(dim, 0, h->_width);
+  VecSet(dim, 1, h->_height);
+  (*tga)->_curLayer = TGALayerCreate(dim, NULL);
+  // If we couldn't allocate memory
+  if ((*tga)->_curLayer == NULL) {
+    // Free the memory for the TGA
+    free((*tga)->_layers);
+    free((*tga)->_header);
+    free((*tga));
+    return 2;
+  }
+  // Add the layer to the set
+  GSetPush((*tga)->_layers, (*tga)->_curLayer);
   // Set a pointer to the pixel
-  TGAPixel *pix = (*tga)->_pixels;
+  TGAPixel *pix = (*tga)->_curLayer->_pixels;
   // For each pixel
   for (i = 0; i < h->_width * h->_height; ++i) {
     // For each value RGBA
@@ -311,6 +361,8 @@ int TGALoad(TGA **tga, char *fileName) {
   fclose(fptr);
   // To avoid warning
   ret = ret;
+  // Free memory
+  VecFree(&dim);
   // Return success code
   return 0;
 }
@@ -322,7 +374,7 @@ int TGALoad(TGA **tga, char *fileName) {
 int TGASave(TGA *tga, char *fileName) {
   // Check arguments
   if (tga == NULL || fileName == NULL || 
-    tga->_header == NULL || tga->_pixels == NULL)
+    tga->_header == NULL || tga->_layers == NULL)
     return 2;
   // Open the file
   FILE *fptr = fopen(fileName,"w");
@@ -349,10 +401,10 @@ int TGASave(TGA *tga, char *fileName) {
   for (int i = 0; 
     i < tga->_header->_height * tga->_header->_width; ++i) {
     // Write the pixel values
-    putc(tga->_pixels[i]._rgba[2], fptr);
-    putc(tga->_pixels[i]._rgba[1], fptr);
-    putc(tga->_pixels[i]._rgba[0], fptr);
-    putc(tga->_pixels[i]._rgba[3], fptr);
+    putc(tga->_curLayer->_pixels[i]._rgba[2], fptr);
+    putc(tga->_curLayer->_pixels[i]._rgba[1], fptr);
+    putc(tga->_curLayer->_pixels[i]._rgba[0], fptr);
+    putc(tga->_curLayer->_pixels[i]._rgba[3], fptr);
   }
   // Close the file
   fclose(fptr);
@@ -402,42 +454,56 @@ bool TGAIsPosInside(TGA *tga, VecShort *pos) {
 }
 
 // Get a pointer to the pixel at coord (x,y) = (pos[0],pos[1])
+// in the current layer
 // Return NULL in case of invalid arguments
 TGAPixel* TGAGetPix(TGA *tga, VecShort *pos) {
   // Check arguments
   if (tga == NULL || pos == NULL ||
-    tga->_pixels == NULL || tga->_header == NULL) 
+    tga->_layers == NULL || tga->_header == NULL) 
     return NULL;
-  if (TGAIsPosInside(tga, pos) == false) 
-    return NULL;
-  // Set a pointer to the pixels
-  TGAPixel *p = tga->_pixels;
-  // Calculate the index of the requested pixel
-  int i = VecGet(pos, 1) * tga->_header->_width + VecGet(pos, 0);
-  // Return a pointer toward the requested pixel
-  return &(p[i]);
+  // Return a pointer toward the requested pixel in the current layer
+  return TGALayerGetPix(tga->_curLayer, pos);
 }
 
 // Set the color of one pixel at coord (x,y) = (pos[0],pos[1]) to 'pix'
 // Do nothing in case of invalid arguments
 void TGASetPix(TGA *tga, VecShort *pos, TGAPixel *pix) {
   // Check arguments
-  if (tga == NULL || pos == NULL || pix == NULL ||
-    tga->_pixels == NULL || tga->_header == NULL) 
+  if (tga == NULL) 
     return;
-  // Set a pointer to the pixels
-  TGAPixel *p = TGAGetPix(tga, pos);
-  // If the pixel is not null and not in read only mode
-  if (p != NULL && TGAPixelIsReadOnly(p) == false) 
-    // Set the value of the pixel
-    memcpy(p, pix, sizeof(TGAPixel));
+  // Set the pixel in the current layer
+  TGALayerSetPix(tga->_curLayer, pos, pix);
+}
+
+// Draw one stroke at 'pos' with 'pen' of type tgaPenShapoid
+// in current layer
+// Don't do anything in case of invalid arguments
+void TGAStrokePixShapoid(TGA *tga, VecFloat *pos, TGAPencil *pen) {
+  // Check arguments
+  if (tga == NULL) 
+    return;
+  // Stroke in the current layer
+  TGALayerStrokePixShapoid(tga->_curLayer, pos, pen);
 }
 
 // Draw one stroke at 'pos' with 'pen' of type tgaPenPixel
+// in current layer
 // Don't do anything in case of invalid arguments
 void TGAStrokePixOnePixel(TGA *tga, VecFloat *pos, TGAPencil *pen) {
   // Check arguments
-  if (tga == NULL || pos == NULL || pen == NULL) return;
+  if (tga == NULL) 
+    return;
+  // Stroke in the current layer
+  TGALayerStrokePixOnePixel(tga->_curLayer, pos, pen);
+}
+
+// Draw one stroke at 'pos' with 'pen' of type tgaPenPixel
+// in layer 'that'
+// Don't do anything in case of invalid arguments
+void TGALayerStrokePixOnePixel(TGALayer *that, 
+  VecFloat *pos, TGAPencil *pen) {
+  // Check arguments
+  if (that == NULL || pos == NULL || pen == NULL) return;
   // Declare a variable for the integer position of the 
   // current pixel
   VecShort *q = VecShortCreate(2);
@@ -446,35 +512,29 @@ void TGAStrokePixOnePixel(TGA *tga, VecFloat *pos, TGAPencil *pen) {
   VecSet(q, 0, (short)floor(VecGet(pos, 0)));
   VecSet(q, 1, (short)floor(VecGet(pos, 1)));
   // Get the curent pixel of the tga
-  TGAPixel *pixTga = TGAGetPix(tga, q);
+  TGAPixel *pixTga = TGALayerGetPix(that, q);
   // If the pixel is not in read only mode
   if (TGAPixelIsReadOnly(pixTga) == false) {
     // Get the curent pixel of the pencil
     TGAPixel *pixPen = TGAPencilGetPixel(pen);
-    // Get a blend of colors according to pen opacity
-    TGAPixel *pix = TGABlendPixel(pixTga, pixPen, 
-      (float)(pixPen->_rgba[3]) / 255.0);
-    // Correct opacity
-    if (pix->_rgba[3] < 255 - pixPen->_rgba[3])
-      pix->_rgba[3] += pixPen->_rgba[3];
-    else
-      pix->_rgba[3] = 255;
+    // Get a mix of colors
+    TGAPixel *pix = TGAPixelMix(pixTga, pixPen, 1.0);
     // Set the color of the current pixel
     memcpy(pixTga, pix, sizeof(TGAPixel));
     // Free the memory used by the pixel from the pencil
-    TGAFreePixel(&pixPen);
-    TGAFreePixel(&pix);
+    TGAPixelFree(&pixPen);
+    TGAPixelFree(&pix);
     VecFree(&q);
   }
 }
 
 // Draw one stroke at 'pos' with 'pen' of type tgaPenShapoid
+// in layer 'that'
 // Don't do anything in case of invalid arguments
-void TGAStrokePixShapoid(TGA *tga, VecFloat *pos, TGAPencil *pen) {
+void TGALayerStrokePixShapoid(TGALayer *that, 
+  VecFloat *pos, TGAPencil *pen) {
   // Check arguments
-  if (tga == NULL || pos == NULL || pen == NULL) return;
-  // Set a pointer to pixels
-  TGAPixel *pixels = tga->_pixels;
+  if (that == NULL || pos == NULL || pen == NULL) return;
   // Get the curent color of the pencil
   TGAPixel *pix = TGAPencilGetPixel(pen);
   // Declare variable for coordinates of pixel
@@ -526,14 +586,15 @@ void TGAStrokePixShapoid(TGA *tga, VecFloat *pos, TGAPencil *pen) {
         // Get the integer position of the current pixel
         for (int i = 2; i--;)
           VecSet(q, i, (short)floor(VecGet(p, i)));
+        // Get a pointer to the current pixel
+        TGAPixel *curPix = TGALayerGetPix(that, q);
         // If the pixel is in the tga
-        if (TGAIsPosInside(tga, q) == true) {
-          // Calculate the index of the current pixel
-          int iPix = VecGet(q, 1) * tga->_header->_width + VecGet(q, 0);
+        if (curPix != NULL && TGAPixelIsReadOnly(curPix) == false) {
           // If the pen doesn't use antialias
           if (pen->_antialias == false) {
             // Set the value of the pixel
-            memcpy(pixels + iPix, pix, sizeof(TGAPixel));
+            memcpy(curPix->_rgba, pix->_rgba, 
+              sizeof(unsigned char) * 4);
           // Else, if the pencil uses antialias
           } else {
             // Position the pixel Facoid
@@ -541,28 +602,28 @@ void TGAStrokePixShapoid(TGA *tga, VecFloat *pos, TGAPencil *pen) {
               VecSet(pixel->_pos, i, floor(VecGet(p, i)));
             // Get the ratio coverage of this pixel by the pen tip
             float ratio = ShapoidGetCoverage(penTip, pixel);
-            // Get a pointer to the current pixel
-            TGAPixel *curPix = TGAGetPix(tga, q);
-            // If the pointer is not null
-            if (curPix != NULL) {
-              // Blend the current pixel with the pixel from 
-              // the pencil
-              TGAPixel *blendPix = TGABlendPixel(curPix, pix, ratio);
-              // If the blended pixel is not null
-              if (blendPix != NULL) {
-                // Set the current pixel to the blended pixel
-                memcpy(pixels + iPix, blendPix, sizeof(TGAPixel));
-                // Free memory used by the blended pixel
-                TGAFreePixel(&blendPix);
-              }
+            // Blend the current pixel with the pixel from 
+            // the pencil
+            TGAPixel *blendPix = TGAPixelMix(curPix, pix, ratio);
+            //TGAPixel *blendPix = TGAPixelBlend(curPix, mixPix, ratio);
+            //TGAPixel *blendPix = TGAPixelBlend(curPix, pix, ratio);
+            // If the blended pixel is not null
+            if (blendPix != NULL) {
+              // Set the current pixel to the blended pixel
+              memcpy(curPix->_rgba, blendPix->_rgba, 
+                sizeof(unsigned char) * 4);
+              // Free memory used by the blended pixel
+              TGAPixelFree(&blendPix);
             }
+            //if (ratio >= 1.0 - PBMATH_EPSILON)
+              //curPix->_readOnly = true;
           }
         }
       }
     }
   }
   // Free memory
-  TGAFreePixel(&pix);
+  TGAPixelFree(&pix);
   VecFree(&p);
   VecFree(&q);
   ShapoidFree(&tipBox);
@@ -571,17 +632,14 @@ void TGAStrokePixShapoid(TGA *tga, VecFloat *pos, TGAPencil *pen) {
 }
 
 // Draw one stroke at 'pos' with 'pen'
-// Don't do anything in case of invalid arguments
+// in current layer
+// Do nothing in case of invalid arguments
 void TGAStrokePix(TGA *tga, VecFloat *pos, TGAPencil *pen) {
   // Check arguments
-  if (tga == NULL || pos == NULL || pen == NULL) return;
-  // If the shape of the pencil is pixel 
-  if (pen->_shape == tgaPenPixel) {
-    TGAStrokePixOnePixel(tga, pos, pen);
-  // Else, if the shape of the pencil is shapoid
-  } else if (pen->_shape == tgaPenShapoid) {
-    TGAStrokePixShapoid(tga, pos, pen);
-  }
+  if (tga == NULL) 
+    return;
+  // Stroke in current layer
+  TGALayerStrokePix(tga->_curLayer, pos, pen);
 }
 
 // Draw a line between 'from' and 'to' with pencil 'pen'
@@ -606,51 +664,30 @@ void TGADrawBCurve(TGA *tga, BCurve *curve, TGAPencil *pen) {
   if (tga == NULL || curve == NULL || pen == NULL || 
     BCurveOrder(curve) < 1)
     return;
-  // GetThe approximate length of the curve
-  float l = BCurveApproxLen(curve);
-  // Declare a variable to memorize the step of the parameter of 
-  // the BCurve
-  float dt = 0.5 / l;
-  // Declare the parameter of the curve
-  float t = 0.0;
-  // Declare a variable to memorize the position on the curve
-  VecFloat *pos = VecClone(curve->_ctrl[0]);
-  // Declare a variable to memorize the last pixel stroke to avoid
-  // stroking several time the same pixel as dt is underestimated
-  VecFloat *prevPos = VecClone(pos);
-  if (prevPos == NULL)
-    return;
-  // Set the blend value of the pencil to calculate the pencil 
-  // current color
-  TGAPencilSetBlend(pen, 0.0);
-  // Stroke the first pixel
-  TGAStrokePix(tga, curve->_ctrl[0], pen);  
-  // While we haven't reached the end of the curve
-  while (t <= 1.0) {
-    // Calculate the current position on the curve
-    VecFree(&pos);
-    pos = BCurveGet(curve, t);
-    // If the current position is not on the same pixel as previously
-    // stroke
-    if (VecDist(prevPos, pos) >= 0.5) {
-      // Set the blend value of the pencil to calculate the pencil 
-      // current color
-      TGAPencilSetBlend(pen, t);
-      // Stroke the pixel
-      TGAStrokePix(tga, pos, pen);
-      // Update the position of the last stroke pixel
-      VecCopy(prevPos, pos);
+  // Clean the working layer
+  TGALayerClean(tga->_tmpLayer);
+  // Draw the curve in the working layer
+  TGALayerAddCurve(tga->_tmpLayer, curve, pen);
+  // Get the bounding box of the curve
+  VecShort *bound = NULL;
+  Shapoid *shape = BCurveGetBoundingBox(curve);
+  if (shape != NULL) {
+    bound = VecShortCreate(4);
+    if (bound != NULL) {
+      for (int i = 2; i--;) {
+        VecSet(bound, i, VecGet(shape->_pos, i) - pen->_thickness);
+        VecSet(bound, 2 + i, VecGet(shape->_pos, i) + pen->_thickness);
+      }
+      for (int i = 2; i--;)
+        VecSet(bound, 2 + i, 
+          VecGet(bound, 2 + i) + VecGet(shape->_axis[i], i));
     }
-    // Move along the curve by dt
-    t += dt;
   }
-  // If the last pixel hasn't been stroke
-  if (VecHamiltonDist(prevPos, curve->_ctrl[curve->_order]) >= 0.5)
-    // Stroke the last pixel
-    TGAStrokePix(tga, curve->_ctrl[curve->_order], pen);  
+  // Blend the working layer in the current layer
+  TGALayerBlend(tga->_curLayer, tga->_tmpLayer, bound);
   // Free memory
-  VecFree(&pos);
-  VecFree(&prevPos);
+  VecFree(&bound);
+  ShapoidFree(&shape);
 }
 
 // Draw the SCurve 'curve' (must be of dimension 2)
@@ -659,14 +696,36 @@ void TGADrawSCurve(TGA *tga, SCurve *curve, TGAPencil *pen) {
   // Check arguments
   if (tga == NULL || curve == NULL || pen == NULL)
     return;
+  // Clean the working layer
+  TGALayerClean(tga->_tmpLayer);
   // Declare a pointer to loop on BCurves of the SCurve
   GSetElem *ptr = curve->_curves->_head;
   while (ptr != NULL) {
-    // Draw the curve
-    TGADrawBCurve(tga, (BCurve*)(ptr->_data), pen);
+    // Draw the curve in the working layer
+    TGALayerAddCurve(tga->_tmpLayer, (BCurve*)(ptr->_data), pen);
     // Move to the next curve
     ptr = ptr->_next;
   }
+  // Get the bounding box of the curve
+  VecShort *bound = NULL;
+  Shapoid *shape = SCurveGetBoundingBox(curve);
+  if (shape != NULL) {
+    bound = VecShortCreate(4);
+    if (bound != NULL) {
+      for (int i = 2; i--;) {
+        VecSet(bound, i, VecGet(shape->_pos, i) - pen->_thickness);
+        VecSet(bound, 2 + i, VecGet(shape->_pos, i) + pen->_thickness);
+      }
+      for (int i = 2; i--;)
+        VecSet(bound, 2 + i, 
+          VecGet(bound, 2 + i) + VecGet(shape->_axis[i], i));
+    }
+  }
+  // Blend the working layer in the current layer
+  TGALayerBlend(tga->_curLayer, tga->_tmpLayer, bound);
+  // Free memory
+  VecFree(&bound);
+  ShapoidFree(&shape);
 }
   
 // Draw a rectangle between 'from' and 'to' with pencil 'pen'
@@ -796,10 +855,25 @@ void TGAFillShapoid(TGA *tga, Shapoid *s, TGAPencil *pen) {
   if (tga == NULL || s == NULL || pen == NULL ||
     ShapoidGetDim(s) != 2)
     return;
-  // Get the bounding box
+  // Clean the working layer
+  TGALayerClean(tga->_tmpLayer);
+
+  // Get the bounding box of the curve
+  VecShort *bound = NULL;
   Shapoid *bounding = ShapoidGetBoundingBox(s);
   // If we could get the bounding box
   if (bounding != NULL) {
+    bound = VecShortCreate(4);
+    if (bound != NULL) {
+      for (int i = 2; i--;) {
+        VecSet(bound, i, VecGet(bounding->_pos, i) - pen->_thickness);
+        VecSet(bound, 2 + i, VecGet(bounding->_pos, i) + 
+          pen->_thickness);
+      }
+      for (int i = 2; i--;)
+        VecSet(bound, 2 + i, 
+          VecGet(bound, 2 + i) + VecGet(bounding->_axis[i], i));
+    }
     // Declare a variable to memorize the upper right limit of 
     // the bounding box
     VecFloat *to = 
@@ -834,14 +908,17 @@ void TGAFillShapoid(TGA *tga, Shapoid *s, TGAPencil *pen) {
           // tgaPenBlend mode
           TGAPencilSetBlend(pen, 1.0 - ShapoidGetPosDepth(s, pos));
           // Draw the pixel
-          TGAStrokePix(tga, pos, pen);
+          TGALayerStrokePix(tga->_tmpLayer, pos, pen);
         }
       }
     }
+    // Blend the working layer in the current layer
+    TGALayerBlend(tga->_curLayer, tga->_tmpLayer, bound);
     // Free memory
     ShapoidFree(&bounding);
     VecFree(&to);
     VecFree(&pos);
+    VecFree(&bound);
   }
 }
 
@@ -1093,33 +1170,31 @@ void TGAPrintChar(TGA *tga, TGAPencil *pen, TGAFont *font,
   // Check arguments
   if (tga == NULL || pen == NULL || font == NULL || pos == NULL)
     return;
+  // Declare a vecfloat to scale the curve
+  VecFloat *scale = VecGetOp(font->_scale, font->_size, NULL, 0.0);
+  if (scale == NULL)
+    return;
   // Set a pointer to the requested character's definition
   TGAChar *ch = font->_char + c;
   // Declare a variable to memorize the angle between the abciss
   // and the right direction of the font
   float theta = TGAFontGetAngleWithAbciss(font);
-  // For each curve in the character
-  int nbCurve = SCurveGetNbCurve(ch->_curve);
-  for (int iCurve = 0; iCurve < nbCurve; ++iCurve) {
-    // Clone the curve to Set a pointer to the current curve
-    BCurve *curve = BCurveClone(SCurveGet(ch->_curve, iCurve));
-    if (curve != NULL) {
-      // Scale the curve
-      VecFloat *scale = VecGetOp(font->_scale, font->_size, NULL, 0.0);
-      if (scale == NULL)
-        return;
-      BCurveScale(curve, scale);
-      // Rotate the curve
-      BCurveRot2D(curve, theta);
-      // Translate the curve
-      BCurveTranslate(curve, pos);
-      // Draw the curve
-      TGADrawCurve(tga, curve, pen);
-      // Free memory
-      BCurveFree(&curve);
-      VecFree(&scale);
-    }
+  // Clone the curve
+  SCurve *clone = SCurveClone(ch->_curve);
+  // If we could clone the curve
+  if (clone != NULL) {
+    // Scale the curve
+    SCurveScale(clone, scale);
+    // Rotate the curve
+    SCurveRot2D(clone, theta);
+    // Translate the curve
+    SCurveTranslate(clone, pos);
+    // Draw the curve
+    TGADrawSCurve(tga, clone, pen);
+    // Free memory
+    SCurveFree(&clone);
   }
+  VecFree(&scale);
 }
   
 // Get a white TGAPixel
@@ -1166,7 +1241,7 @@ TGAPixel* TGAGetTransparentPixel(void) {
 }
 
 // Free the memory used by tgapixel
-void TGAFreePixel(TGAPixel **pixel) {
+void TGAPixelFree(TGAPixel **pixel) {
   // Check arguments
   if (pixel == NULL || *pixel == NULL)
     return;
@@ -1178,7 +1253,7 @@ void TGAFreePixel(TGAPixel **pixel) {
 // Return a new TGAPixel which is a blend of 'pixA' and 'pixB' 
 // newPix = (1 - blend) * pixA + blend * pixB
 // Return NULL if arguments are invalid
-TGAPixel* TGABlendPixel(TGAPixel *pixA, TGAPixel *pixB, float blend) {
+TGAPixel* TGAPixelBlend(TGAPixel *pixA, TGAPixel *pixB, float blend) {
   // Check arguments
   if (pixA == NULL || pixB == NULL || blend < 0.0 || blend > 1.0)
     return NULL;
@@ -1193,6 +1268,40 @@ TGAPixel* TGABlendPixel(TGAPixel *pixA, TGAPixel *pixB, float blend) {
         blend * pixB->_rgba[i];
   }
   // Return the blend pixel
+  return ret;
+}
+
+// Return a new TGAPixel which is the addition of 'ratio' 
+// (in [0.0,1.0]) * 'pixB' to 'pixA' 
+// Return NULL if arguments are invalid
+TGAPixel* TGAPixelMix(TGAPixel *pixA, TGAPixel *pixB, float ratio) {
+  // Check arguments
+  if (pixA == NULL || pixB == NULL)
+    return NULL;
+  // Get a transparent pixel
+  TGAPixel *ret = TGAGetTransparentPixel();
+  // If we could get a transparent pixel
+  if (ret != NULL) {
+    // Declare a variable to memorize the opacity in [0,1]
+    float opA = (float)(pixA->_rgba[3]) / 255.0;
+    float opB = ratio * (float)(pixB->_rgba[3]) / 255.0;
+    // If both pixel are not transparent
+    if (opA + opB > 1.0 / 255.0) {
+      // For each rgb value
+      for (int i = 3; i--;) {
+        // Calculate the mixed value
+        float v = (opA * (float)(pixA->_rgba[i]) + 
+          opB * (float)(pixB->_rgba[i])) / (opA + opB);
+        ret->_rgba[i] = (unsigned char)floor(v);
+      }
+      // Calculate mixed opacity (max of pixels opacity)
+      if (opA < opB)
+        ret->_rgba[3] = (unsigned char)floor(opB * 255.0);
+      else
+        ret->_rgba[3] = pixA->_rgba[3];
+    }
+  }
+  // Return the mixed pixel
   return ret;
 }
 
@@ -1217,7 +1326,7 @@ TGAPencil* TGAGetPencil(void) {
     for (int iCol = TGA_NBCOLORPENCIL; iCol--;)
       memcpy(ret->_colors + iCol, pixel, sizeof(TGAPixel));
     // Free memory used for the pixel
-    TGAFreePixel(&pixel);
+    TGAPixelFree(&pixel);
     // Set the default value of the pencil
     ret->_activeColor = 0;
     ret->_modeColor = tgaPenSolid;
@@ -1234,7 +1343,7 @@ TGAPencil* TGAGetPencil(void) {
 }
 
 // Free the memory used by the TGAPencil 'pen'
-void TGAFreePencil(TGAPencil **pencil) {
+void TGAPencilFree(TGAPencil **pencil) {
   // Check arguments
   if (pencil == NULL || *pencil == NULL)
     return;
@@ -1274,14 +1383,14 @@ TGAPencil* TGAGetBlackPencil(void) {
     // If we couldn't get the pixel
     if (pixel == NULL) {
       // Free memory
-      TGAFreePencil(&ret);
+      TGAPencilFree(&ret);
       // Return NULL
       return NULL;
     }
     // Set the color to the black pixel
     TGAPencilSetColor(ret, pixel);
     // Free memory used by the pixel
-    TGAFreePixel(&pixel);
+    TGAPixelFree(&pixel);
   }
   // Return the new pencil
   return ret;
@@ -1657,4 +1766,384 @@ bool TGAPixelIsReadOnly(TGAPixel *pix) {
   if (pix == NULL)
     return true;
   return pix->_readOnly;
+}
+
+// Create a TGALayer of width dim[0] and height dim[1] and background
+// color equal to 'pixel'
+// If 'pixel' is NULL rgba(0,0,0,0) is used
+// Return NULL in case of invalid arguments or memory allocation
+// failure
+TGALayer* TGALayerCreate(VecShort *dim, TGAPixel *pixel) {
+  // Check arguments
+  if (dim == NULL) 
+    return NULL;
+  // Allocate memory
+  TGALayer *ret = (TGALayer*)malloc(sizeof(TGALayer));
+  // If we couldn't allocate memory
+  if (ret == NULL)
+    // Return NULL
+    return NULL;
+  // Set the pointers to NULL
+  ret->_dim = NULL;
+  ret->_pixels = NULL;
+  // Copy the dimensions
+  ret->_dim = VecClone(dim);
+  // If we couldn't allocate memory
+  if (ret->_dim == NULL) {
+    // Free the memory
+    free(ret);
+    // Return NULL
+    return NULL;
+  }
+  // Allocate memory for the pixels
+  ret->_pixels = (TGAPixel*)malloc(VecGet(dim, 0) * VecGet(dim, 1) * 
+    sizeof(TGAPixel));
+  // If we couldn't allocate memory
+  if (ret->_pixels == NULL) {
+    // Free the memory
+    VecFree(&(ret->_dim));
+    free(ret);
+    // Return NULL
+    return NULL;
+  }
+  // Set a pointer to the pixels
+  TGAPixel *p = ret->_pixels;
+  // For each pixel
+  for (int i = 0; i < VecGet(dim, 0) * VecGet(dim, 1); ++i) {
+    // For each value RGBA
+    for (int irgb = 0; irgb < 4; ++irgb)
+      // Initialize the value
+      if (pixel != NULL)
+        p[i]._rgba[irgb] = pixel->_rgba[irgb];
+      else
+        p[i]._rgba[irgb] = 0;
+    // Initialize in read-write
+    p[i]._readOnly = false;
+  }
+  // Return the created TGALayer
+  return ret;
+}
+
+// Clone a TGALayer
+// Return NULL in case of failure
+TGALayer* TGALayerClone(TGALayer *that) {
+  // Check arguments
+  if (that == NULL)
+    return NULL;
+  // Allocate memory for the cloned TGALayer
+  TGALayer *ret = (TGALayer*)malloc(sizeof(TGALayer));
+  // If we could allocate memory
+  if (ret != NULL) {
+    // Clone the dimension
+    ret->_dim = VecClone(that->_dim);
+    // If we couldn't allocate memory
+    if (ret->_dim == NULL) {
+      // Free memory
+      free(ret);
+      // Return NULL
+      return NULL;
+    }
+    // Allocate memory for the pixels
+    ret->_pixels = (TGAPixel*)malloc(VecGet(that->_dim, 0) * 
+      VecGet(that->_dim, 1) * sizeof(TGAPixel));
+    // If we couldn't allocate memory
+    if (ret->_pixels == NULL) {
+      // Free memory
+      VecFree(&(ret->_dim));
+      free(ret);
+      // Return NULL
+      return NULL;
+    }
+    // Copy the pixels
+    memcpy(ret->_pixels, that->_pixels, VecGet(that->_dim, 0) * 
+      VecGet(that->_dim, 1) * sizeof(TGAPixel));
+  }
+  // Return the cloned TGA
+  return ret;
+}
+
+// Free the memory used by the TGALayer
+void TGALayerFree(TGALayer **that) {
+  // Check arguments
+  if (that == NULL || *that == NULL)
+    return;
+  // Free the memory
+  VecFree(&((*that)->_dim));
+  TGAPixelFree(&((*that)->_pixels));
+  free(*that);
+  *that = NULL;
+}
+
+// Set the current layer to the 'iLayer'-th layer
+// Do nothing if arguments are invalid
+void TGASetCurLayer(TGA *that, int iLayer) {
+  // Check arguments
+  if (that == NULL || iLayer < 0 || iLayer >= that->_layers->_nbElem)
+    return;
+  // Set the current layer
+  that->_curLayerIndex = iLayer;
+  that->_curLayer = GSetGet(that->_layers, iLayer);
+}
+
+// Add a layer above the current one
+// Do nothing if the arguments are invalid
+void TGAAddLayer(TGA *that) {
+  // Check arguments
+  if (that == NULL)
+    return;
+  // Create the new layer
+  TGALayer *layer = TGALayerCreate(that->_curLayer->_dim, NULL);
+  // If we could create the layer
+  if (layer != NULL) {
+    // Add it above the current layer
+    GSetInsert(that->_layers, layer, that->_curLayerIndex + 1);
+  }
+}
+
+// Blend layers 'that' and 'tho', the result is stored into 'that'
+// 'tho' is considered to above 'that'
+// If VecShort 'bound' is not null only pixels inside the box
+// (bound[0],bound[1])-(bound[2],bound[3]) (included) are blended
+// 'that' and 'tho' must have same dimension
+// Do nothing if arguments are invalid
+void TGALayerBlend(TGALayer *that, TGALayer *tho, VecShort *bound) {
+  // Check arguments
+  if (that == NULL || tho == NULL || VecIsEqual(that->_dim, tho->_dim) == false)
+    return;
+  // Declare a flag to memorize if we have created the bounds locally
+  bool flagBound = false;
+  // If there is no bound given
+  if (bound == NULL) {
+    // Set the flag
+    flagBound = true;
+    // Create a local bound equal to the dimension of the layer
+    bound = VecShortCreate(4);
+    VecSet(bound, 0, 0);
+    VecSet(bound, 1, 0);
+    VecSet(bound, 2, VecGet(that->_dim, 0) - 1);
+    VecSet(bound, 3, VecGet(that->_dim, 1) - 1);
+  }
+  // Create a vector for looping on the pixels
+  VecShort *pos = VecShortCreate(2);
+  // If we couldn't allocate memory or the bounding box is invalid
+  if (bound == NULL || pos == NULL || VecGet(bound, 0) > VecGet(bound, 2) || VecGet(bound, 1) > VecGet(bound, 3)) {
+    VecFree(&pos);
+    if (flagBound == true)
+      VecFree(&bound);
+  }
+  // Loop on the pixels
+  for (VecSet(pos, 0, VecGet(bound, 0)); 
+    VecGet(pos, 0) <= VecGet(bound, 2);
+    VecSet(pos, 0, VecGet(pos, 0) + 1)) {
+    for (VecSet(pos, 1, VecGet(bound, 1)); 
+      VecGet(pos, 1) <= VecGet(bound, 3);
+      VecSet(pos, 1, VecGet(pos, 1) + 1)) {
+      // Get the pixel in each layer
+      TGAPixel *pixThat = TGALayerGetPix(that, pos);
+      TGAPixel *pixTho = TGALayerGetPix(tho, pos);
+      // If both pixel exists and the one in 'that' is not readonly
+      if (pixThat != NULL && pixTho != NULL &&
+        TGAPixelIsReadOnly(pixThat) == false) {
+        TGAPixel *pixBlend = TGAPixelBlend(pixThat, pixTho, 
+          (float)(pixTho->_rgba[3]) / 255.0);
+        // If we could blend the pixel
+        if (pixBlend != NULL) {
+          // Correct the opacity of the blended pixel
+          if (255.0 - (float)(pixThat->_rgba[3]) > 
+            (float)(pixTho->_rgba[3]))
+            pixBlend->_rgba[3] = pixThat->_rgba[3] + pixTho->_rgba[3];
+          else
+            pixBlend->_rgba[3] = 255.0;
+          // Copy the resulting pixel in 'that'
+          TGALayerSetPix(that, pos, pixBlend);
+        }
+        // Free memory
+        TGAPixelFree(&pixBlend);
+      }
+    }
+  }
+  // Free memory
+  VecFree(&pos);
+  if (flagBound == true)
+    VecFree(&bound);
+}
+
+// Get a pointer to the pixel at coord (x,y) = (pos[0],pos[1]) 
+// in the layer 'that'
+// Return NULL in case of invalid arguments
+TGAPixel* TGALayerGetPix(TGALayer *that, VecShort *pos) {
+  // Check arguments
+  if (that == NULL || pos == NULL) 
+    return NULL;
+  if (VecGet(pos, 0) < 0 || 
+    VecGet(pos, 0) >= VecGet(that->_dim, 0) || 
+    VecGet(pos, 1) < 0 || 
+    VecGet(pos, 1) >= VecGet(that->_dim, 1)) 
+    return NULL;
+  // Set a pointer to the pixels
+  TGAPixel *p = that->_pixels;
+  // Calculate the index of the requested pixel
+  int i = VecGet(pos, 1) * VecGet(that->_dim, 0) + VecGet(pos, 0);
+  // Return a pointer toward the requested pixel
+  return &(p[i]);
+}
+
+// Set the color of one pixel at coord (x,y) = (pos[0],pos[1]) to 'pix'
+// in the layer 'that'
+// Do nothing in case of invalid arguments
+void TGALayerSetPix(TGALayer *that, VecShort *pos, TGAPixel *pix) {
+  // Check arguments
+  if (that == NULL || pos == NULL || pix == NULL) 
+    return;
+  // Set a pointer to the pixels
+  TGAPixel *p = TGALayerGetPix(that, pos);
+  // If the pixel is not null and not in read only mode
+  if (p != NULL && TGAPixelIsReadOnly(p) == false) 
+    // Set the value of the pixel
+    memcpy(p, pix, sizeof(TGAPixel));
+}
+
+// Add the BCurve 'curve' (must be of dimension 2 and order > 0)
+// in 'layer'
+// do nothing if arguments are invalid
+void TGALayerAddCurve(TGALayer *layer, BCurve *curve, TGAPencil *pen) {
+  // Check arguments
+  if (layer == NULL || curve == NULL || pen == NULL || 
+    BCurveOrder(curve) < 1)
+    return;
+  // GetThe approximate length of the curve
+  float l = BCurveApproxLen(curve);
+  // Declare a variable to memorize the step of the parameter of 
+  // the BCurve
+  float dt = 1.0 / l;
+  // Declare the parameter of the curve
+  float t = 0.0;
+  // Declare the parameter value of last drawn pixel
+  float lastT = t;
+  // Declare a variable to memorize the position on the curve
+  VecFloat *pos = VecClone(curve->_ctrl[0]);
+  // Declare a variable to memorize the last pixel stroke to avoid
+  // stroking several time the same pixel as dt is underestimated
+  VecFloat *prevPos = VecClone(pos);
+  if (prevPos == NULL)
+    return;
+  // Set the blend value of the pencil to calculate the pencil 
+  // current color
+  TGAPencilSetBlend(pen, 0.0);
+  // Stroke the first pixel
+  TGALayerStrokePix(layer, curve->_ctrl[0], pen);  
+  // While we haven't reached the end of the curve
+  while (t < 1.0 + dt) {
+    // Calculate the current position on the curve
+    VecFree(&pos);
+    pos = BCurveGet(curve, t);
+    // Declare a variable to memorize the pixel distance to the previous
+    // drawn pixel
+    float pixelDist = VecPixelDist(prevPos, pos);
+    // Declare a flag to memorize if we need to draw the current pixel
+    bool flagDraw = false;
+    // If we are still on the previous pixel
+    if (pixelDist < 0.5) {
+      // Update the position of the last stroke pixel
+      VecCopy(prevPos, pos);
+      // Update the parameter value of last drawn pixel
+      lastT = t;
+      // Move along the curve by dt
+      t += dt;
+    // Else, we have moved to a different pixel
+    } else {
+      // If we are on a side pixel
+      if (pixelDist < 1.5) {
+        // We are good to draw
+        flagDraw = true;
+      // Else, we are at a pixel distance of more than 2.0
+      // It means we jumped over, or moved in diagonal
+      } else {
+        // If we are on a diagonal pixel
+        if (abs((int)floor(VecGet(pos, 0)) - 
+          (int)floor(VecGet(prevPos, 0))) <= 1 && 
+          abs((int)floor(VecGet(pos, 1)) - 
+          (int)floor(VecGet(prevPos, 1))) <= 1) {
+          // We are good to draw
+          flagDraw = true;
+        // Else, we have jump over a pixel
+        } else {
+          // Move back to cancel the jump over pixel
+          t -= (t - lastT) * 0.9;
+        }
+      }
+    }
+    // If we are good to draw
+    if (flagDraw == true) {
+      // Set the blend value of the pencil to calculate the pencil 
+      // current color
+      TGAPencilSetBlend(pen, t);
+      // Stroke the pixel
+      TGALayerStrokePix(layer, pos, pen);
+      // Update the position of the last stroke pixel
+      VecCopy(prevPos, pos);
+      // Update the parameter value of last drawn pixel
+      lastT = t;
+      // Move along the curve by dt
+      t += dt;
+    }
+  }
+  // If the last pixel hasn't been stroke
+  if (VecPixelDist(prevPos, curve->_ctrl[curve->_order]) > 0.5)
+    // Stroke the last pixel
+    TGALayerStrokePix(layer, curve->_ctrl[curve->_order], pen);  
+  // Free memory
+  VecFree(&pos);
+  VecFree(&prevPos);
+}
+
+// Draw one stroke at 'pos' with 'pen'
+// in layer 'that'
+// Do nothing in case of invalid arguments
+void TGALayerStrokePix(TGALayer *that, VecFloat *pos, TGAPencil *pen) {
+  // Check arguments
+  if (that == NULL || pos == NULL || pen == NULL) return;
+  // If the shape of the pencil is pixel 
+  if (pen->_shape == tgaPenPixel) {
+    TGALayerStrokePixOnePixel(that, pos, pen);
+  // Else, if the shape of the pencil is shapoid
+  } else if (pen->_shape == tgaPenShapoid) {
+    TGALayerStrokePixShapoid(that, pos, pen);
+  }
+}
+
+// Return true if 'pos' is inside 'that'
+// Return false else, or if arguments are invalid
+bool TGALayerIsPosInside(TGALayer *that, VecShort *pos) {
+  // Check arguments
+  if (that == NULL || pos == NULL || VecDim(pos) < 2)
+    return false;
+  // If the position is in the tga
+  if (VecGet(pos, 0) >= 0 && VecGet(pos, 0) < VecGet(that->_dim, 0) && 
+    VecGet(pos, 1) >= 0 && VecGet(pos, 1) < VecGet(that->_dim, 1))
+    return true;
+  // Else, the position is not in the tga
+  else
+    return false;
+}
+
+// Erase the content of the layer 'that' 
+// (set all pixel to rgba(0,0,0,0) and readonly to false)
+// Do nothing in case of invalid argument
+void TGALayerClean(TGALayer *that) {
+  // Check arguments
+  if (that == NULL)
+    return;
+  // Set a pointer to the pixels
+  TGAPixel *p = that->_pixels;
+  // For each pixel
+  for (int i = 0; 
+    i < VecGet(that->_dim, 0) * VecGet(that->_dim, 1); ++i) {
+    // For each value RGBA
+    for (int irgb = 0; irgb < 4; ++irgb)
+      // Set the value
+      p[i]._rgba[irgb] = 0;
+    // Set read-write
+    p[i]._readOnly = false;
+  }
 }
